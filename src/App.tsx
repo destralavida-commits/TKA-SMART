@@ -8,7 +8,14 @@ import {
   query,
   where,
 } from 'firebase/firestore';
-import { onAuthStateChanged, signInWithPopup, signOut, type User } from 'firebase/auth';
+import {
+  getRedirectResult,
+  onAuthStateChanged,
+  signInWithPopup,
+  signInWithRedirect,
+  signOut,
+  type User,
+} from 'firebase/auth';
 import { AdminLayout } from './components/AdminLayout';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { PortalAuth } from './components/PortalAuth';
@@ -29,13 +36,17 @@ import {
 import { seedDemoData } from './lib/demoSeed';
 import {
   auth,
+  authPersistenceReady,
   db,
+  formatFirebaseAuthError,
   googleProvider,
   handleFirestoreError,
+  isPopupBlockedError,
   OperationType,
   testConnection,
 } from './lib/firebase';
 import {
+  formatFirestoreErrorMessage,
   saveGradedOutcome,
   saveUserProfile,
   subscribeCollection,
@@ -65,6 +76,7 @@ function AppShell() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [popupBlocked, setPopupBlocked] = useState(false);
 
   const [studentSession, setStudentSession] = useState<StudentSessionPayload | null>(null);
 
@@ -89,6 +101,8 @@ function AppShell() {
 
   const autoSeededRef = useRef(false);
   const gradingLockRef = useRef(false);
+  const authSeqRef = useRef(0);
+  const resolvingUidRef = useRef<string | null>(null);
 
   // Initial Firestore connectivity check + public active school lookup for login dropdown
   useEffect(() => {
@@ -111,83 +125,222 @@ function AppShell() {
     void loadPublicSchools();
   }, []);
 
-  // Resolve Firebase Auth -> UserProfile
-  useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (user) => {
-      setFirebaseUser(user);
-      if (!user) {
-        setProfile(null);
-        setAuthReady(true);
+  const resolveAuthenticatedUser = useCallback(async (user: User) => {
+    if (resolvingUidRef.current === user.uid) return;
+    const seq = ++authSeqRef.current;
+    resolvingUidRef.current = user.uid;
+    setAuthLoading(true);
+    setAuthError(null);
+    setPopupBlocked(false);
+
+    try {
+      const email = (user.email || '').trim().toLowerCase();
+      if (!email) {
+        setAuthError('Akun Google tidak memiliki alamat email yang valid.');
+        await signOut(auth);
+        if (authSeqRef.current === seq) setProfile(null);
         return;
       }
 
-      setAuthLoading(true);
-      setAuthError(null);
-      try {
-        const email = (user.email || '').trim().toLowerCase();
-        const userRef = doc(db, 'users', user.uid);
-        const userSnap = await getDoc(userRef);
+      if (!user.emailVerified) {
+        setAuthError(
+          `Email ${email} belum terverifikasi oleh Google. Gunakan akun Google terverifikasi.`,
+        );
+        await signOut(auth);
+        if (authSeqRef.current === seq) setProfile(null);
+        return;
+      }
 
-        if (userSnap.exists()) {
-          const existing = userSnap.data() as UserProfile;
-          if (!existing.isActive) {
-            setAuthError('Akun Anda sedang dinonaktifkan oleh Admin Utama.');
-            await signOut(auth);
-            setProfile(null);
-            return;
+      const userRef = doc(db, 'users', user.uid);
+      const userSnap = await getDoc(userRef);
+      if (authSeqRef.current !== seq) return;
+
+      const validRoles = ['super_admin', 'school_admin', 'teacher'] as const;
+
+      if (userSnap.exists()) {
+        const existing = userSnap.data() as UserProfile;
+        if (!existing.isActive) {
+          setAuthError('Akun Anda sedang dinonaktifkan oleh Admin Utama.');
+          await signOut(auth);
+          if (authSeqRef.current === seq) setProfile(null);
+          return;
+        }
+
+        if (!validRoles.includes(existing.role)) {
+          setAuthError(
+            'Role akun Anda pada database tidak valid. Hubungi Admin Utama untuk memperbarui hak akses.',
+          );
+          await signOut(auth);
+          if (authSeqRef.current === seq) setProfile(null);
+          return;
+        }
+
+        if (
+          existing.role !== 'super_admin' &&
+          (!existing.school_id || existing.school_id === 'ALL')
+        ) {
+          setAuthError(
+            'Data school_id akun Anda belum ditetapkan ke sekolah tertentu. Hubungi Admin Utama.',
+          );
+          await signOut(auth);
+          if (authSeqRef.current === seq) setProfile(null);
+          return;
+        }
+
+        // Cross-check invite status if non-bootstrapped user has an invite record
+        if (email !== BOOTSTRAPPED_SUPER_ADMIN_EMAIL) {
+          try {
+            const inviteSnap = await getDoc(doc(db, 'user_invites', email));
+            if (authSeqRef.current !== seq) return;
+            if (inviteSnap.exists()) {
+              const invite = inviteSnap.data() as UserInvite;
+              if (!invite.isActive) {
+                setAuthError('Akses akun Anda telah dinonaktifkan oleh Admin Utama.');
+                await signOut(auth);
+                if (authSeqRef.current === seq) setProfile(null);
+                return;
+              }
+            }
+          } catch {
+            // If invite lookup fails transiently while valid profile exists, continue with profile
           }
+        }
+
+        if (authSeqRef.current === seq) {
           setProfile(existing);
-        } else if (email === BOOTSTRAPPED_SUPER_ADMIN_EMAIL) {
-          const newAdmin: UserProfile = {
-            uid: user.uid,
-            email,
-            name: user.displayName || 'Admin Utama TKA SMART',
-            role: 'super_admin',
-            school_id: 'ALL',
-            isActive: true,
-          };
-          await saveUserProfile(newAdmin);
+        }
+      } else if (email === BOOTSTRAPPED_SUPER_ADMIN_EMAIL) {
+        const rawName = (user.displayName || 'Admin Utama TKA SMART').trim();
+        const newAdmin: UserProfile = {
+          uid: user.uid,
+          email,
+          name: rawName.length >= 2 ? rawName : 'Admin Utama TKA SMART',
+          role: 'super_admin',
+          school_id: 'ALL',
+          isActive: true,
+        };
+        await saveUserProfile(newAdmin);
+        if (authSeqRef.current === seq) {
           setProfile(newAdmin);
-        } else {
-          // Check invite registry
-          const inviteSnap = await getDoc(doc(db, 'user_invites', email));
-          if (!inviteSnap.exists()) {
-            setAuthError(
-              `Email ${email} belum terdaftar. Minta Admin Utama menambahkan akun Anda pada menu Akun Pengguna.`,
-            );
-            await signOut(auth);
-            setProfile(null);
-            return;
-          }
-          const invite = inviteSnap.data() as UserInvite;
-          if (!invite.isActive) {
-            setAuthError('Undangan akun Anda tidak aktif.');
-            await signOut(auth);
-            setProfile(null);
-            return;
-          }
-          const createdProfile: UserProfile = {
-            uid: user.uid,
-            email,
-            name: invite.name || user.displayName || email,
-            role: invite.role,
-            school_id: invite.school_id,
-            isActive: true,
-          };
-          await saveUserProfile(createdProfile);
+        }
+      } else {
+        // Strict: do NOT grant admin/staff access automatically; verify pre-registered invite in Firestore
+        const inviteSnap = await getDoc(doc(db, 'user_invites', email));
+        if (authSeqRef.current !== seq) return;
+
+        if (!inviteSnap.exists()) {
+          setAuthError(
+            `Akun Google ${email} belum terdaftar. Akses admin/guru tidak diberikan otomatis — minta Admin Utama mendaftarkan email, role, dan school_id Anda pada menu Akun Pengguna.`,
+          );
+          await signOut(auth);
+          if (authSeqRef.current === seq) setProfile(null);
+          return;
+        }
+
+        const invite = inviteSnap.data() as UserInvite;
+        if (!invite.isActive) {
+          setAuthError('Undangan akun Anda sedang dinonaktifkan oleh Admin Utama.');
+          await signOut(auth);
+          if (authSeqRef.current === seq) setProfile(null);
+          return;
+        }
+
+        if (!validRoles.includes(invite.role)) {
+          setAuthError('Role pada undangan akun Anda tidak valid. Hubungi Admin Utama.');
+          await signOut(auth);
+          if (authSeqRef.current === seq) setProfile(null);
+          return;
+        }
+
+        if (
+          invite.role !== 'super_admin' &&
+          (!invite.school_id || invite.school_id === 'ALL')
+        ) {
+          setAuthError(
+            'Sekolah (school_id) untuk akun Anda belum ditentukan oleh Admin Utama.',
+          );
+          await signOut(auth);
+          if (authSeqRef.current === seq) setProfile(null);
+          return;
+        }
+
+        const candidateName = (invite.name || user.displayName || email).trim();
+        const safeName = candidateName.length >= 2 ? candidateName : email;
+        const createdProfile: UserProfile = {
+          uid: user.uid,
+          email,
+          name: safeName,
+          role: invite.role,
+          school_id: invite.role === 'super_admin' ? 'ALL' : invite.school_id,
+          isActive: true,
+        };
+        await saveUserProfile(createdProfile);
+        if (authSeqRef.current === seq) {
           setProfile(createdProfile);
         }
-      } catch (err) {
-        setAuthError(
-          err instanceof Error ? err.message : 'Gagal memuat profil pengguna.',
+      }
+    } catch (err) {
+      if (authSeqRef.current === seq) {
+        const msg = formatFirestoreErrorMessage(
+          err,
+          'Gagal memeriksa profil dan hak akses pengguna di Firestore.',
         );
-      } finally {
+        setAuthError(msg);
+        setProfile(null);
+      }
+    } finally {
+      if (resolvingUidRef.current === user.uid) {
+        resolvingUidRef.current = null;
+      }
+      if (authSeqRef.current === seq) {
         setAuthLoading(false);
         setAuthReady(true);
       }
-    });
-    return () => unsub();
+    }
   }, []);
+
+  // Resolve Firebase Auth persistence, redirect results, & session restoration on reload
+  useEffect(() => {
+    let mounted = true;
+    let unsub: (() => void) | undefined;
+
+    const initAuth = async () => {
+      await authPersistenceReady;
+      try {
+        const redirectResult = await getRedirectResult(auth);
+        if (mounted && redirectResult?.user) {
+          setFirebaseUser(redirectResult.user);
+          await resolveAuthenticatedUser(redirectResult.user);
+        }
+      } catch (err) {
+        if (mounted) {
+          setAuthError(formatFirebaseAuthError(err));
+          setPopupBlocked(isPopupBlockedError(err));
+        }
+      }
+
+      if (!mounted) return;
+      unsub = onAuthStateChanged(auth, async (user) => {
+        if (!mounted) return;
+        setFirebaseUser(user);
+        if (!user) {
+          authSeqRef.current += 1;
+          resolvingUidRef.current = null;
+          setProfile(null);
+          setAuthLoading(false);
+          setAuthReady(true);
+          return;
+        }
+        await resolveAuthenticatedUser(user);
+      });
+    };
+
+    void initAuth();
+    return () => {
+      mounted = false;
+      if (unsub) unsub();
+    };
+  }, [resolveAuthenticatedUser]);
 
   // Auto-seed demo data once when super_admin signs in on an empty database
   useEffect(() => {
@@ -239,7 +392,10 @@ function AppShell() {
         onSnapshot(
           tokenQ,
           (snap) => setTokens(snap.docs.map((d) => d.data() as ExamToken)),
-          (err) => handleFirestoreError(err, OperationType.LIST, 'exam_tokens'),
+          (err) => {
+            if (!auth.currentUser) return;
+            handleFirestoreError(err, OperationType.LIST, 'exam_tokens');
+          },
         ),
       );
     }
@@ -294,22 +450,67 @@ function AppShell() {
 
   const handleGoogleLogin = async () => {
     setAuthError(null);
+    setPopupBlocked(false);
     setAuthLoading(true);
     try {
-      await signInWithPopup(auth, googleProvider);
+      await authPersistenceReady;
+      const prevUid = auth.currentUser?.uid ?? null;
+      const credential = await signInWithPopup(auth, googleProvider);
+      if (credential?.user && prevUid === credential.user.uid && !profile) {
+        await resolveAuthenticatedUser(credential.user);
+      } else if (credential?.user && prevUid === credential.user.uid && profile) {
+        setAuthLoading(false);
+      }
     } catch (err) {
-      setAuthError(
-        err instanceof Error ? err.message : 'Login Google dibatalkan atau gagal.',
-      );
+      setPopupBlocked(isPopupBlockedError(err));
+      setAuthError(formatFirebaseAuthError(err));
+      setAuthLoading(false);
+    }
+  };
+
+  const handleGoogleRedirectLogin = async () => {
+    setAuthError(null);
+    setPopupBlocked(false);
+    setAuthLoading(true);
+    try {
+      await authPersistenceReady;
+      await signInWithRedirect(auth, googleProvider);
+    } catch (err) {
+      setAuthError(formatFirebaseAuthError(err));
       setAuthLoading(false);
     }
   };
 
   const handleSignOut = async () => {
-    await signOut(auth);
+    authSeqRef.current += 1;
+    resolvingUidRef.current = null;
+    autoSeededRef.current = false;
+
+    // Detach staff subscriptions & clear local state before revoking auth token
     setProfile(null);
+    setFirebaseUser(null);
+    setAuthError(null);
+    setPopupBlocked(false);
     setActiveTab('dashboard');
     setPreviewSchoolId(null);
+    setSchools([]);
+    setInvites([]);
+    setUsers([]);
+    setClasses([]);
+    setStudents([]);
+    setStimuli([]);
+    setQuestions([]);
+    setPackages([]);
+    setTokens([]);
+    setSessions([]);
+    setAttempts([]);
+    setResults([]);
+
+    try {
+      await signOut(auth);
+    } catch (err) {
+      setAuthError(formatFirebaseAuthError(err));
+    }
   };
 
   const handleStudentLogin = async (
@@ -489,8 +690,10 @@ function AppShell() {
     <PortalAuth
       onStudentLogin={handleStudentLogin}
       onGoogleLogin={handleGoogleLogin}
+      onGoogleRedirectLogin={handleGoogleRedirectLogin}
       authLoading={authLoading}
       authError={authError}
+      popupBlocked={popupBlocked}
       schools={publicSchools}
     />
   );

@@ -13,16 +13,20 @@ import type { School } from '../types/tka';
 interface PortalAuthProps {
   onStudentLogin: (nis: string, token: string, schoolId?: string) => Promise<void>;
   onGoogleLogin: () => Promise<void>;
+  onGoogleRedirectLogin?: () => Promise<void>;
   authLoading: boolean;
   authError: string | null;
+  popupBlocked?: boolean;
   schools: School[];
 }
 
 export function PortalAuth({
   onStudentLogin,
   onGoogleLogin,
+  onGoogleRedirectLogin,
   authLoading,
   authError,
+  popupBlocked = false,
   schools,
 }: PortalAuthProps) {
   const [nis, setNis] = useState('');
@@ -72,7 +76,12 @@ export function PortalAuth({
 
           <button
             type="button"
-            onClick={onGoogleLogin}
+            onClick={() => {
+              document
+                .getElementById('staff-auth-panel')
+                ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              void onGoogleLogin();
+            }}
             disabled={authLoading}
             className="neu-btn-soft inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-[#1E3A8A] whitespace-nowrap shrink-0 disabled:opacity-60"
           >
@@ -197,7 +206,10 @@ export function PortalAuth({
           </section>
 
           {/* Right: Admin & Teacher Colorful Gradient Soft-Neumorphism Card */}
-          <aside className="lg:col-span-5 rounded-[1.125rem] bg-gradient-to-br from-[#1E1B4B] via-[#312E81] to-[#0284C7] text-white p-6 sm:p-8 flex flex-col justify-between shadow-[12px_12px_28px_rgba(30,27,75,0.24),-6px_-6px_18px_rgba(255,255,255,0.75)] border border-white/20">
+          <aside
+            id="staff-auth-panel"
+            className="lg:col-span-5 rounded-[1.125rem] bg-gradient-to-br from-[#1E1B4B] via-[#312E81] to-[#0284C7] text-white p-6 sm:p-8 flex flex-col justify-between shadow-[12px_12px_28px_rgba(30,27,75,0.24),-6px_-6px_18px_rgba(255,255,255,0.75)] border border-white/20"
+          >
             <div>
               <div className="flex items-center gap-2 text-xs font-bold text-cyan-300 mb-3">
                 <ShieldCheck className="w-4 h-4" />
@@ -228,9 +240,22 @@ export function PortalAuth({
 
             <div>
               {authError && (
-                <div className="mb-4 p-3 rounded-xl bg-rose-950/60 border border-rose-300/40 text-xs text-rose-100 flex items-start gap-2">
+                <div className="mb-4 p-3.5 rounded-xl bg-rose-950/75 border border-rose-300/50 text-xs text-rose-100 flex items-start gap-2.5 leading-relaxed">
                   <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-300" />
-                  <span>{authError}</span>
+                  <div className="space-y-2 flex-1">
+                    <p>{authError}</p>
+                    {popupBlocked && onGoogleRedirectLogin && (
+                      <button
+                        type="button"
+                        onClick={onGoogleRedirectLogin}
+                        disabled={authLoading}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/15 hover:bg-white/25 text-white font-semibold border border-white/25 transition-colors disabled:opacity-60"
+                      >
+                        <LogIn className="w-3.5 h-3.5" />
+                        <span>Masuk via Pengalihan (Redirect)</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
 

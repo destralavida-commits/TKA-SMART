@@ -13,7 +13,7 @@ import {
   type Unsubscribe,
 } from 'firebase/firestore';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
-import { db, handleFirestoreError, OperationType, storage } from './firebase';
+import { auth, db, handleFirestoreError, OperationType, storage } from './firebase';
 import type {
   ExamAttempt,
   ExamPackage,
@@ -190,6 +190,14 @@ export async function saveUserProfile(profile: UserProfile): Promise<void> {
     await setDoc(doc(db, 'users', profile.uid), payload);
   } catch (e) {
     handleFirestoreError(e, OperationType.WRITE, `users/${profile.uid}`);
+  }
+}
+
+export async function deleteUserProfile(uid: string): Promise<void> {
+  try {
+    await deleteDoc(doc(db, 'users', uid));
+  } catch (e) {
+    handleFirestoreError(e, OperationType.DELETE, `users/${uid}`);
   }
 }
 
@@ -729,6 +737,7 @@ export function subscribeCollection<T>(
       onData(snap.docs.map((d) => d.data() as T));
     },
     (err) => {
+      if (!auth.currentUser) return;
       if (onError) onError(err);
       handleFirestoreError(err, OperationType.LIST, collectionName);
     },

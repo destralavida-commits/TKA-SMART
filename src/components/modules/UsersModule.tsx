@@ -1,6 +1,11 @@
 import React, { useState } from 'react';
 import { Plus, Trash2, UserPlus } from 'lucide-react';
-import { deleteUserInvite, saveUserInvite, saveUserProfile } from '../../lib/firestoreService';
+import {
+  deleteUserInvite,
+  deleteUserProfile,
+  saveUserInvite,
+  saveUserProfile,
+} from '../../lib/firestoreService';
 import type { School, UserInvite, UserProfile, UserRole } from '../../types/tka';
 
 interface UsersModuleProps {
@@ -71,6 +76,14 @@ export function UsersModule({
     const existingUser = users.find((u) => u.email.toLowerCase() === inv.email.toLowerCase());
     if (existingUser) {
       await saveUserProfile({ ...existingUser, isActive: !inv.isActive });
+    }
+  };
+
+  const handleDeleteInvite = async (inv: UserInvite) => {
+    await deleteUserInvite(inv.email);
+    const existingUser = users.find((u) => u.email.toLowerCase() === inv.email.toLowerCase());
+    if (existingUser) {
+      await deleteUserProfile(existingUser.uid);
     }
   };
 
@@ -165,7 +178,7 @@ export function UsersModule({
                         </button>
                         <button
                           type="button"
-                          onClick={() => deleteUserInvite(inv.email)}
+                          onClick={() => void handleDeleteInvite(inv)}
                           className="inline-flex items-center p-1.5 text-slate-400 hover:text-rose-600"
                           title="Hapus akun"
                         >
