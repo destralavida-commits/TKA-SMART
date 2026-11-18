@@ -268,9 +268,16 @@ export function PortalAuth({
                 <LogIn className="w-4 h-4 text-[#4F46E5]" />
                 <span>{authLoading ? 'Menghubungkan Akun...' : 'Masuk dengan Google'}</span>
               </button>
-              <p className="mt-3 text-xs text-indigo-200 text-center">
-                Khusus Admin Utama, Admin Sekolah, dan Guru yang telah terdaftar.
-              </p>
+              <div className="mt-3 text-xs text-indigo-100/90 text-center space-y-1">
+                <p>Khusus Admin Utama, Admin Sekolah, dan Guru yang telah terdaftar.</p>
+                <p className="text-[11px] text-cyan-200/95">
+                  Login Super Admin (Admin Utama): klik tombol di atas lalu pilih akun Google{' '}
+                  <span className="font-mono-tabular font-semibold text-white">
+                    nurwijayanti24@guru.sd.belajar.id
+                  </span>
+                  .
+                </p>
+              </div>
             </div>
           </aside>
         </div>

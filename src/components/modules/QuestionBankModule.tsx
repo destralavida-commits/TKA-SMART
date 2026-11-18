@@ -1,15 +1,18 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import {
+  ClipboardPaste,
   Download,
   Edit3,
   Eye,
   FileSpreadsheet,
   FileText,
+  Image as ImageIcon,
   Layers,
   Plus,
   Search,
   Trash2,
   Upload,
+  X,
 } from 'lucide-react';
 import { TemplateGeneratorTab } from './TemplateGeneratorTab';
 import {
@@ -120,7 +123,188 @@ export function QuestionBankModule({
 
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [imageFeedback, setImageFeedback] = useState<{
+    type: 'success' | 'info' | 'error';
+    text: string;
+  } | null>(null);
   const [importNotice, setImportNotice] = useState<string | null>(null);
+  const qPasteZoneRef = useRef<HTMLDivElement | null>(null);
+  const sPasteZoneRef = useRef<HTMLDivElement | null>(null);
+
+  const processImageFile = async (
+    file: File,
+    target: 'questions' | 'stimuli',
+    sourceLabel: 'unggah' | 'tempel' | 'seret' = 'unggah',
+  ) => {
+    if (!file.type.startsWith('image/')) {
+      setImageFeedback({
+        type: 'error',
+        text: 'File yang dipilih bukan gambar yang valid (PNG, JPG, WebP, atau GIF).',
+      });
+      return;
+    }
+
+    if (target === 'questions') {
+      setQUploading(true);
+    } else {
+      setSUploading(true);
+    }
+    setImageFeedback(null);
+
+    try {
+      const ext = (file.type.split('/')[1] || 'png').replace(/[^a-z0-9]/gi, '') || 'png';
+      const namedFile = file.name
+        ? file
+        : new File([file], `pasted_${Date.now()}.${ext}`, { type: file.type || 'image/png' });
+      const url = await uploadAssetImage(namedFile, target);
+      if (target === 'questions') {
+        setQImageUrl(url);
+      } else {
+        setSImageUrl(url);
+      }
+      setImageFeedback({
+        type: 'success',
+        text:
+          sourceLabel === 'tempel'
+            ? 'Gambar berhasil ditempel dari clipboard dan siap disimpan.'
+            : sourceLabel === 'seret'
+              ? 'Gambar berhasil dimuat dari drag & drop.'
+              : 'Gambar berhasil diunggah.',
+      });
+    } catch (err) {
+      setImageFeedback({
+        type: 'error',
+        text:
+          err instanceof Error
+            ? err.message
+            : 'Gagal memproses gambar. Coba gunakan gambar berukuran lebih kecil.',
+      });
+    } finally {
+      if (target === 'questions') {
+        setQUploading(false);
+      } else {
+        setSUploading(false);
+      }
+    }
+  };
+
+  const handlePasteEventForImage = (
+    e: React.ClipboardEvent,
+    target: 'questions' | 'stimuli',
+  ) => {
+    const items = e.clipboardData?.items;
+    if (items && items.length > 0) {
+      for (let i = 0; i < items.length; i += 1) {
+        const item = items[i];
+        if (item.kind === 'file' && item.type.startsWith('image/')) {
+          const file = item.getAsFile();
+          if (file) {
+            e.preventDefault();
+            void processImageFile(file, target, 'tempel');
+            return true;
+          }
+        }
+      }
+    }
+
+    const files = e.clipboardData?.files;
+    if (files && files.length > 0) {
+      for (let i = 0; i < files.length; i += 1) {
+        if (files[i].type.startsWith('image/')) {
+          e.preventDefault();
+          void processImageFile(files[i], target, 'tempel');
+          return true;
+        }
+      }
+    }
+    // Check HTML <img src="..."> when clipboard has copied image markup without plain text
+    const html = e.clipboardData?.getData('text/html') || '';
+    const plain = (e.clipboardData?.getData('text/plain') || '').trim();
+    if (html && !plain) {
+      const imgMatch = html.match(/<img[^>]+src=["']([^"']+)["']/i);
+      if (imgMatch && /^(https?:\/\/|data:image\/)/i.test(imgMatch[1])) {
+        e.preventDefault();
+        if (target === 'questions') setQImageUrl(imgMatch[1]);
+        else setSImageUrl(imgMatch[1]);
+        setImageFeedback({
+          type: 'success',
+          text: 'Gambar dari clipboard berhasil ditempel.',
+        });
+        return true;
+      }
+    }
+    return false;
+  };
+
+  const handlePasteButtonClick = async (target: 'questions' | 'stimuli') => {
+    setImageFeedback(null);
+    if (typeof navigator === 'undefined' || !navigator.clipboard?.read) {
+      if (target === 'questions') qPasteZoneRef.current?.focus();
+      else sPasteZoneRef.current?.focus();
+      setImageFeedback({
+        type: 'info',
+        text: 'Browser ini tidak mendukung tombol tempel otomatis. Klik kotak tempel di bawah lalu tekan Ctrl+V (atau Cmd+V di Mac).',
+      });
+      return;
+    }
+
+    try {
+      const clipboardItems = await navigator.clipboard.read();
+      for (const item of clipboardItems) {
+        const imageMime = item.types.find((t) => t.startsWith('image/'));
+        if (imageMime) {
+          const blob = await item.getType(imageMime);
+          const ext = (imageMime.split('/')[1] || 'png').replace(/[^a-z0-9]/gi, '') || 'png';
+          const file = new File([blob], `clipboard_${Date.now()}.${ext}`, { type: imageMime });
+          await processImageFile(file, target, 'tempel');
+          return;
+        }
+      }
+
+      // Check HTML <img> tag or plain image URL in clipboard
+      for (const item of clipboardItems) {
+        if (item.types.includes('text/html')) {
+          const htmlBlob = await item.getType('text/html');
+          const html = await htmlBlob.text();
+          const imgMatch = html.match(/<img[^>]+src=["']([^"']+)["']/i);
+          if (imgMatch && /^(https?:\/\/|data:image\/)/i.test(imgMatch[1])) {
+            if (target === 'questions') setQImageUrl(imgMatch[1]);
+            else setSImageUrl(imgMatch[1]);
+            setImageFeedback({
+              type: 'success',
+              text: 'Gambar dari clipboard berhasil ditempel.',
+            });
+            return;
+          }
+        }
+        if (item.types.includes('text/plain')) {
+          const textBlob = await item.getType('text/plain');
+          const text = (await textBlob.text()).trim();
+          if (/^(https?:\/\/|data:image\/)/i.test(text)) {
+            if (target === 'questions') setQImageUrl(text);
+            else setSImageUrl(text);
+            setImageFeedback({
+              type: 'success',
+              text: 'Tautan gambar dari clipboard berhasil ditempel.',
+            });
+            return;
+          }
+        }
+      }
+
+      setImageFeedback({
+        type: 'error',
+        text: 'Clipboard tidak berisi gambar. Silakan copy/screenshot gambar terlebih dahulu lalu tekan Tempel Gambar.',
+      });
+    } catch {
+      if (target === 'questions') qPasteZoneRef.current?.focus();
+      else sPasteZoneRef.current?.focus();
+      setImageFeedback({
+        type: 'info',
+        text: 'Izin baca clipboard otomatis dibatasi browser. Klik kotak tempel di bawah lalu tekan Ctrl+V (atau Cmd+V di Mac).',
+      });
+    }
+  };
 
   const stimuliMap = useMemo(
     () => Object.fromEntries(stimuli.map((s) => [s.id, s])),
@@ -184,6 +368,7 @@ export function QuestionBankModule({
     setQPoints(10);
     setQExplanation('');
     setFormError(null);
+    setImageFeedback(null);
     setShowQuestionForm(true);
   };
 
@@ -223,6 +408,7 @@ export function QuestionBankModule({
     setQPoints(q.points || 10);
     setQExplanation(q.explanation || '');
     setFormError(null);
+    setImageFeedback(null);
     setShowQuestionForm(true);
   };
 
@@ -304,6 +490,7 @@ export function QuestionBankModule({
     setSChartLabels('Data 1,Data 2,Data 3');
     setSChartValues('25,40,35');
     setFormError(null);
+    setImageFeedback(null);
     setShowStimulusForm(true);
   };
 
@@ -327,6 +514,7 @@ export function QuestionBankModule({
       setSChartValues(st.chartData.values.join(','));
     }
     setFormError(null);
+    setImageFeedback(null);
     setShowStimulusForm(true);
   };
 
@@ -658,6 +846,15 @@ export function QuestionBankModule({
                       <span>Materi: {q.topic}</span>
                       <span aria-hidden="true">·</span>
                       <span>Indikator: {q.indicator}</span>
+                      {q.imageUrl && (
+                        <>
+                          <span aria-hidden="true">·</span>
+                          <span className="inline-flex items-center gap-1 text-emerald-700 font-semibold">
+                            <ImageIcon className="w-3.5 h-3.5" />
+                            <span>Dengan Gambar</span>
+                          </span>
+                        </>
+                      )}
                       {stim && (
                         <>
                           <span aria-hidden="true">·</span>
@@ -777,7 +974,18 @@ export function QuestionBankModule({
             )}
 
             <div className="space-y-3">
-              <p className="text-base font-medium text-[#1E1B4B]">
+              {previewQuestion.imageUrl && (
+                <div className="neu-surface-sm p-2.5">
+                  <img
+                    src={previewQuestion.imageUrl}
+                    alt="Gambar soal"
+                    referrerPolicy="no-referrer"
+                    className="max-h-72 w-full object-contain rounded-lg"
+                  />
+                </div>
+              )}
+
+              <p className="text-base font-medium text-[#1E1B4B] whitespace-pre-line">
                 {previewQuestion.questionText}
               </p>
 
@@ -844,7 +1052,12 @@ export function QuestionBankModule({
 
       {/* Question Add/Edit Modal */}
       {showQuestionForm && (
-        <div className="fixed inset-0 z-50 bg-slate-900/45 backdrop-blur-sm flex items-center justify-center p-4">
+        <div
+          className="fixed inset-0 z-50 bg-slate-900/45 backdrop-blur-sm flex items-center justify-center p-4"
+          onPaste={(e) => {
+            handlePasteEventForImage(e, 'questions');
+          }}
+        >
           <div className="neu-modal max-w-2xl w-full max-h-[92vh] overflow-y-auto p-6 space-y-4">
             <h3 className="text-lg font-bold text-[#1E1B4B]">
               {editingQuestion ? 'Edit Butir Soal' : 'Tambah Butir Soal Baru'}
@@ -978,38 +1191,119 @@ export function QuestionBankModule({
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
+              <div className="space-y-2.5">
+                <label className="block text-xs font-semibold text-slate-700">
                   Gambar Soal Tambahan (Opsional)
                 </label>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <input
                     type="text"
                     value={qImageUrl}
                     onChange={(e) => setQImageUrl(e.target.value)}
-                    placeholder="URL gambar soal"
-                    className="neu-input flex-1 px-3 py-2 rounded-xl text-xs"
+                    placeholder="URL gambar soal atau tempel gambar (Ctrl+V)"
+                    className="neu-input flex-1 min-w-[200px] px-3 py-2 rounded-xl text-xs"
                   />
-                  <label className="neu-btn-soft px-3 py-2 rounded-xl text-xs font-semibold text-indigo-700 cursor-pointer shrink-0">
-                    {qUploading ? 'Mengunggah...' : 'Unggah Gambar'}
+                  <button
+                    type="button"
+                    disabled={qUploading}
+                    onClick={() => void handlePasteButtonClick('questions')}
+                    className="neu-btn-soft inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-cyan-700 shrink-0 disabled:opacity-60"
+                    title="Tempel gambar yang sudah di-copy dari clipboard"
+                  >
+                    <ClipboardPaste className="w-3.5 h-3.5" />
+                    <span>{qUploading ? 'Memproses...' : 'Tempel Gambar'}</span>
+                  </button>
+                  <label className="neu-btn-soft inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-indigo-700 cursor-pointer shrink-0">
+                    <Upload className="w-3.5 h-3.5" />
+                    <span>{qUploading ? 'Mengunggah...' : 'Unggah Gambar'}</span>
                     <input
                       type="file"
                       accept="image/*"
                       onChange={async (ev) => {
                         const file = ev.target.files?.[0];
+                        ev.target.value = '';
                         if (!file) return;
-                        setQUploading(true);
-                        try {
-                          const url = await uploadAssetImage(file, 'questions');
-                          setQImageUrl(url);
-                        } finally {
-                          setQUploading(false);
-                        }
+                        await processImageFile(file, 'questions', 'unggah');
                       }}
                       className="hidden"
                     />
                   </label>
                 </div>
+
+                {/* Zona Tempel / Drag & Drop */}
+                <div
+                  ref={qPasteZoneRef}
+                  tabIndex={0}
+                  onPaste={(e) => {
+                    const handled = handlePasteEventForImage(e, 'questions');
+                    if (!handled) {
+                      setImageFeedback({
+                        type: 'error',
+                        text: 'Data yang ditempel bukan gambar. Silakan copy gambar (Screenshot / Salin Gambar) lalu tekan Ctrl+V di sini.',
+                      });
+                    }
+                  }}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    const file = e.dataTransfer.files?.[0];
+                    if (file) {
+                      void processImageFile(file, 'questions', 'seret');
+                    }
+                  }}
+                  className="neu-inset rounded-xl px-3.5 py-2.5 text-xs text-slate-600 flex items-center justify-between gap-3 border border-dashed border-indigo-300/70 focus:outline-none focus:ring-2 focus:ring-indigo-400 cursor-pointer"
+                  onClick={() => qPasteZoneRef.current?.focus()}
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <ClipboardPaste className="w-4 h-4 text-indigo-500 shrink-0" />
+                    <span>
+                      Klik area ini lalu tekan <strong className="text-[#1E1B4B]">Ctrl+V</strong> (Mac:{' '}
+                      <strong className="text-[#1E1B4B]">Cmd+V</strong>) untuk menempel gambar yang sudah di-copy, atau seret gambar ke sini.
+                    </span>
+                  </div>
+                </div>
+
+                {imageFeedback && (
+                  <div
+                    className={`px-3 py-2 rounded-xl text-xs font-medium ${
+                      imageFeedback.type === 'success'
+                        ? 'bg-emerald-50 border border-emerald-200 text-emerald-700'
+                        : imageFeedback.type === 'info'
+                          ? 'bg-indigo-50 border border-indigo-200 text-indigo-700'
+                          : 'bg-rose-50 border border-rose-200 text-rose-700'
+                    }`}
+                  >
+                    {imageFeedback.text}
+                  </div>
+                )}
+
+                {qImageUrl && (
+                  <div className="neu-surface-sm p-2.5 relative">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[11px] font-semibold text-slate-500 inline-flex items-center gap-1">
+                        <ImageIcon className="w-3.5 h-3.5 text-indigo-500" />
+                        Pratinjau Gambar Soal
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setQImageUrl('');
+                          setImageFeedback(null);
+                        }}
+                        className="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-600 hover:underline"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                        Hapus Gambar
+                      </button>
+                    </div>
+                    <img
+                      src={qImageUrl}
+                      alt="Pratinjau gambar soal"
+                      referrerPolicy="no-referrer"
+                      className="max-h-52 w-full object-contain rounded-lg bg-white"
+                    />
+                  </div>
+                )}
               </div>
 
               {/* Options for PG & PGK MCMA */}
@@ -1163,10 +1457,10 @@ export function QuestionBankModule({
                 </button>
                 <button
                   type="submit"
-                  disabled={saving}
+                  disabled={saving || qUploading}
                   className="neu-btn-primary px-4 py-2 rounded-xl text-sm font-semibold disabled:opacity-60"
                 >
-                  {saving ? 'Menyimpan...' : 'Simpan Soal'}
+                  {saving ? 'Menyimpan...' : qUploading ? 'Memproses Gambar...' : 'Simpan Soal'}
                 </button>
               </div>
             </form>
@@ -1176,7 +1470,14 @@ export function QuestionBankModule({
 
       {/* Stimulus Modal */}
       {showStimulusForm && (
-        <div className="fixed inset-0 z-50 bg-slate-900/45 backdrop-blur-sm flex items-center justify-center p-4">
+        <div
+          className="fixed inset-0 z-50 bg-slate-900/45 backdrop-blur-sm flex items-center justify-center p-4"
+          onPaste={(e) => {
+            if (sType === 'image' || sType === 'mixed') {
+              handlePasteEventForImage(e, 'stimuli');
+            }
+          }}
+        >
           <div className="neu-modal max-w-xl w-full max-h-[90vh] overflow-y-auto p-6 space-y-4">
             <h3 className="text-lg font-bold text-[#1E1B4B]">
               {editingStimulus ? 'Edit Stimulus' : 'Tambah Stimulus Baru'}
@@ -1245,38 +1546,116 @@ export function QuestionBankModule({
               </div>
 
               {(sType === 'image' || sType === 'mixed') && (
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                <div className="space-y-2.5">
+                  <label className="block text-xs font-semibold text-slate-700">
                     Gambar Stimulus
                   </label>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <input
                       type="text"
                       value={sImageUrl}
                       onChange={(e) => setSImageUrl(e.target.value)}
-                      placeholder="URL gambar"
-                      className="neu-input flex-1 px-3 py-2 rounded-xl text-xs"
+                      placeholder="URL gambar atau tempel gambar (Ctrl+V)"
+                      className="neu-input flex-1 min-w-[180px] px-3 py-2 rounded-xl text-xs"
                     />
-                    <label className="neu-btn-soft px-3 py-2 rounded-xl text-xs font-semibold text-indigo-700 cursor-pointer shrink-0">
-                      {sUploading ? 'Mengunggah...' : 'Unggah'}
+                    <button
+                      type="button"
+                      disabled={sUploading}
+                      onClick={() => void handlePasteButtonClick('stimuli')}
+                      className="neu-btn-soft inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-cyan-700 shrink-0 disabled:opacity-60"
+                      title="Tempel gambar yang sudah di-copy dari clipboard"
+                    >
+                      <ClipboardPaste className="w-3.5 h-3.5" />
+                      <span>{sUploading ? 'Memproses...' : 'Tempel Gambar'}</span>
+                    </button>
+                    <label className="neu-btn-soft inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-indigo-700 cursor-pointer shrink-0">
+                      <Upload className="w-3.5 h-3.5" />
+                      <span>{sUploading ? 'Mengunggah...' : 'Unggah'}</span>
                       <input
                         type="file"
                         accept="image/*"
                         onChange={async (ev) => {
                           const file = ev.target.files?.[0];
+                          ev.target.value = '';
                           if (!file) return;
-                          setSUploading(true);
-                          try {
-                            const url = await uploadAssetImage(file, 'stimuli');
-                            setSImageUrl(url);
-                          } finally {
-                            setSUploading(false);
-                          }
+                          await processImageFile(file, 'stimuli', 'unggah');
                         }}
                         className="hidden"
                       />
                     </label>
                   </div>
+
+                  <div
+                    ref={sPasteZoneRef}
+                    tabIndex={0}
+                    onPaste={(e) => {
+                      const handled = handlePasteEventForImage(e, 'stimuli');
+                      if (!handled) {
+                        setImageFeedback({
+                          type: 'error',
+                          text: 'Data yang ditempel bukan gambar. Silakan copy gambar terlebih dahulu lalu tekan Ctrl+V di sini.',
+                        });
+                      }
+                    }}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      const file = e.dataTransfer.files?.[0];
+                      if (file) {
+                        void processImageFile(file, 'stimuli', 'seret');
+                      }
+                    }}
+                    onClick={() => sPasteZoneRef.current?.focus()}
+                    className="neu-inset rounded-xl px-3.5 py-2 text-xs text-slate-600 flex items-center gap-2 border border-dashed border-indigo-300/70 focus:outline-none focus:ring-2 focus:ring-indigo-400 cursor-pointer"
+                  >
+                    <ClipboardPaste className="w-4 h-4 text-indigo-500 shrink-0" />
+                    <span>
+                      Klik lalu tekan <strong className="text-[#1E1B4B]">Ctrl+V</strong> /{' '}
+                      <strong className="text-[#1E1B4B]">Cmd+V</strong> untuk tempel gambar yang di-copy, atau seret gambar ke sini.
+                    </span>
+                  </div>
+
+                  {imageFeedback && (
+                    <div
+                      className={`px-3 py-2 rounded-xl text-xs font-medium ${
+                        imageFeedback.type === 'success'
+                          ? 'bg-emerald-50 border border-emerald-200 text-emerald-700'
+                          : imageFeedback.type === 'info'
+                            ? 'bg-indigo-50 border border-indigo-200 text-indigo-700'
+                            : 'bg-rose-50 border border-rose-200 text-rose-700'
+                      }`}
+                    >
+                      {imageFeedback.text}
+                    </div>
+                  )}
+
+                  {sImageUrl && (
+                    <div className="neu-surface-sm p-2.5">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-[11px] font-semibold text-slate-500 inline-flex items-center gap-1">
+                          <ImageIcon className="w-3.5 h-3.5 text-indigo-500" />
+                          Pratinjau Gambar Stimulus
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSImageUrl('');
+                            setImageFeedback(null);
+                          }}
+                          className="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-600 hover:underline"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                          Hapus Gambar
+                        </button>
+                      </div>
+                      <img
+                        src={sImageUrl}
+                        alt="Pratinjau gambar stimulus"
+                        referrerPolicy="no-referrer"
+                        className="max-h-48 w-full object-contain rounded-lg bg-white"
+                      />
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1344,10 +1723,10 @@ export function QuestionBankModule({
                 </button>
                 <button
                   type="submit"
-                  disabled={saving}
+                  disabled={saving || sUploading}
                   className="neu-btn-primary px-4 py-2 rounded-xl text-sm font-semibold disabled:opacity-60"
                 >
-                  {saving ? 'Menyimpan...' : 'Simpan Stimulus'}
+                  {saving ? 'Menyimpan...' : sUploading ? 'Memproses Gambar...' : 'Simpan Stimulus'}
                 </button>
               </div>
             </form>

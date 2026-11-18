@@ -18,6 +18,8 @@ export const auth = getAuth(app);
 auth.languageCode = 'id';
 
 export const storage = getStorage(app);
+storage.maxUploadRetryTime = 2500;
+storage.maxOperationRetryTime = 2500;
 
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.addScope('email');

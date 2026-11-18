@@ -114,7 +114,7 @@
         "title": { "type": "string", "minLength": 2, "maxLength": 200 },
         "stimulusType": { "type": "string", "enum": ["text", "image", "table", "chart", "diagram", "mixed"] },
         "readingText": { "type": "string", "maxLength": 15000 },
-        "imageUrl": { "type": "string", "maxLength": 1000 },
+        "imageUrl": { "type": "string", "maxLength": 250000 },
         "isDemo": { "type": "boolean" },
         "createdBy": { "type": "string", "maxLength": 128 }
       },
@@ -134,7 +134,7 @@
         "questionType": { "type": "string", "enum": ["pg", "pgk_mcma", "pgk_kategori"] },
         "stimulusId": { "type": "string", "maxLength": 64 },
         "questionText": { "type": "string", "minLength": 3, "maxLength": 4000 },
-        "imageUrl": { "type": "string", "maxLength": 1000 },
+        "imageUrl": { "type": "string", "maxLength": 250000 },
         "pgkScoringRule": { "type": "string", "enum": ["all_or_nothing", "partial_proportional"] },
         "points": { "type": "number" },
         "explanation": { "type": "string", "maxLength": 4000 },
@@ -178,7 +178,7 @@
         "subjectId": { "type": "string", "enum": ["bahasa_indonesia", "matematika"] },
         "questionType": { "type": "string", "enum": ["pg", "pgk_mcma", "pgk_kategori"] },
         "questionText": { "type": "string", "maxLength": 4000 },
-        "imageUrl": { "type": "string", "maxLength": 1000 },
+        "imageUrl": { "type": "string", "maxLength": 250000 },
         "stimulusId": { "type": "string", "maxLength": 64 }
       },
       "required": ["id", "orderIndex", "subjectId", "questionType", "questionText"]

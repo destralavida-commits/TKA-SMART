@@ -187,7 +187,7 @@ service cloud.firestore {
         isValidString(data.title, 2, 200) &&
         (data.stimulusType in ['text', 'image', 'table', 'chart', 'diagram', 'mixed']) &&
         isValidOptionalString(data, 'readingText', 15000) &&
-        isValidOptionalString(data, 'imageUrl', 1000) &&
+        isValidOptionalString(data, 'imageUrl', 250000) &&
         isValidOptionalString(data, 'diagramSvg', 10000) &&
         isValidOptionalBool(data, 'isDemo') &&
         isValidString(data.createdBy, 1, 128) &&
@@ -207,7 +207,7 @@ service cloud.firestore {
         (data.questionType in ['pg', 'pgk_mcma', 'pgk_kategori']) &&
         isValidOptionalString(data, 'stimulusId', 64) &&
         isValidString(data.questionText, 3, 4000) &&
-        isValidOptionalString(data, 'imageUrl', 1000) &&
+        isValidOptionalString(data, 'imageUrl', 250000) &&
         (!( 'options' in data ) || (data.options is list && data.options.size() <= 8)) &&
         (!( 'statements' in data ) || (data.statements is list && data.statements.size() <= 8)) &&
         isValidOptionalString(data, 'correctOptionId', 20) &&
@@ -257,7 +257,7 @@ service cloud.firestore {
         (data.subjectId in ['bahasa_indonesia', 'matematika']) &&
         (data.questionType in ['pg', 'pgk_mcma', 'pgk_kategori']) &&
         isValidString(data.questionText, 1, 4000) &&
-        isValidOptionalString(data, 'imageUrl', 1000) &&
+        isValidOptionalString(data, 'imageUrl', 250000) &&
         (!( 'options' in data ) || (data.options is list && data.options.size() <= 8)) &&
         (!( 'statements' in data ) || (data.statements is list && data.statements.size() <= 8)) &&
         isValidOptionalString(data, 'stimulusId', 64) &&

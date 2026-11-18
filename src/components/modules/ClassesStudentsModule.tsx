@@ -111,10 +111,13 @@ export function ClassesStudentsModule({
     setClsName('');
     setClsTeacher('');
     setClsYear('2025/2026');
+    const targetExists = schools.some((s) => s.id === defaultValidSchoolId);
     setFormError(
-      defaultValidSchoolId
+      defaultValidSchoolId && targetExists
         ? null
-        : 'Belum ada data sekolah yang tersedia. Tambahkan sekolah terlebih dahulu di menu Data Sekolah.',
+        : defaultValidSchoolId
+          ? `Sekolah "${defaultValidSchoolId}" belum terdaftar di database Data Sekolah. Masuk sebagai Super Admin untuk menginisialisasi data sekolah terlebih dahulu.`
+          : 'Belum ada data sekolah yang tersedia. Tambahkan sekolah terlebih dahulu di menu Data Sekolah.',
     );
     setShowClassModal(true);
   };
@@ -132,8 +135,10 @@ export function ClassesStudentsModule({
   const handleSaveClass = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
-    if (!clsSchoolId || (!lockedSchoolId && !schools.some((s) => s.id === clsSchoolId))) {
-      setFormError('Sekolah belum dipilih atau belum terdaftar di database. Buat sekolah terlebih dahulu di menu Data Sekolah.');
+    if (!clsSchoolId || !schools.some((s) => s.id === clsSchoolId)) {
+      setFormError(
+        `Sekolah "${clsSchoolId || '-'}" belum terdaftar di database Data Sekolah. Pastikan Super Admin telah masuk dan menambahkan sekolah tersebut.`,
+      );
       return;
     }
     if (!clsName.trim()) {
@@ -171,6 +176,7 @@ export function ClassesStudentsModule({
   const openNewStudent = () => {
     const defaultSch = defaultValidSchoolId;
     const firstCls = classes.find((c) => c.school_id === defaultSch);
+    const targetExists = schools.some((s) => s.id === defaultSch);
     setEditingStudent(null);
     setStuSchoolId(defaultSch);
     setStuClassId(firstCls?.id || '');
@@ -179,9 +185,11 @@ export function ClassesStudentsModule({
     setStuGender('L');
     setStuActive(true);
     setFormError(
-      !defaultSch
-        ? 'Belum ada data sekolah yang tersedia. Tambahkan sekolah terlebih dahulu di menu Data Sekolah.'
-        : null,
+      defaultSch && targetExists
+        ? null
+        : defaultSch
+          ? `Sekolah "${defaultSch}" belum terdaftar di database Data Sekolah. Masuk sebagai Super Admin untuk menginisialisasi data sekolah terlebih dahulu.`
+          : 'Belum ada data sekolah yang tersedia. Tambahkan sekolah terlebih dahulu di menu Data Sekolah.',
     );
     setShowStudentModal(true);
   };
@@ -201,8 +209,10 @@ export function ClassesStudentsModule({
   const handleSaveStudent = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
-    if (!stuSchoolId || (!lockedSchoolId && !schools.some((s) => s.id === stuSchoolId))) {
-      setFormError('Sekolah belum dipilih atau belum terdaftar di database.');
+    if (!stuSchoolId || !schools.some((s) => s.id === stuSchoolId)) {
+      setFormError(
+        `Sekolah "${stuSchoolId || '-'}" belum terdaftar di database Data Sekolah. Pastikan Super Admin telah menambahkan sekolah tersebut.`,
+      );
       return;
     }
     const cleanNis = sanitizeId(stuNis).slice(0, 30);

@@ -70,49 +70,90 @@ export function formatFirestoreErrorMessage(err: unknown, fallback: string): str
   return err.message || fallback;
 }
 
-// Storage upload with safe compressed DataURL fallback if Storage bucket rules aren't configured
+let storageFallbackActive = false;
+
+// Fast client-side image compression + short-timeout Storage upload with instant DataURL fallback
 export async function uploadAssetImage(
   file: File,
   folder: 'schools' | 'questions' | 'stimuli',
 ): Promise<string> {
-  const safeName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+  const { blob, dataUrl } = await compressImageToBlobAndDataUrl(file, 900, 0.8);
+
+  if (storageFallbackActive) {
+    return dataUrl;
+  }
+
+  const baseName = (file.name || `img_${Date.now()}`).replace(/\.[^.]+$/, '');
+  const safeName = `${Date.now()}_${baseName.replace(/[^a-zA-Z0-9_-]/g, '_')}.jpg`;
+
   try {
     const storageRef = ref(storage, `tka_smart/${folder}/${safeName}`);
-    await uploadBytes(storageRef, file);
-    return await getDownloadURL(storageRef);
+    const uploadPromise = (async () => {
+      await uploadBytes(storageRef, blob, { contentType: 'image/jpeg' });
+      return await getDownloadURL(storageRef);
+    })();
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error('Storage upload timeout')), 2200);
+    });
+    return await Promise.race([uploadPromise, timeoutPromise]);
   } catch (err) {
+    storageFallbackActive = true;
     console.warn('Firebase Storage upload fallback triggered:', err);
-    return await compressImageToDataUrl(file, 720, 0.78);
+    return dataUrl;
   }
 }
 
-async function compressImageToDataUrl(
+async function compressImageToBlobAndDataUrl(
   file: File,
   maxWidth: number,
   quality: number,
-): Promise<string> {
+): Promise<{ blob: Blob; dataUrl: string }> {
   return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const img = new Image();
-      img.onload = () => {
-        const ratio = Math.min(1, maxWidth / img.width);
+    const objectUrl = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      const attempts: Array<[number, number]> = [
+        [maxWidth, quality],
+        [680, 0.72],
+        [520, 0.62],
+        [380, 0.52],
+      ];
+
+      for (const [targetMaxW, targetQ] of attempts) {
+        const ratio = Math.min(1, targetMaxW / (img.width || targetMaxW));
         const canvas = document.createElement('canvas');
-        canvas.width = Math.round(img.width * ratio);
-        canvas.height = Math.round(img.height * ratio);
+        canvas.width = Math.max(1, Math.round(img.width * ratio));
+        canvas.height = Math.max(1, Math.round(img.height * ratio));
         const ctx = canvas.getContext('2d');
         if (!ctx) {
           reject(new Error('Gagal memproses gambar'));
           return;
         }
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        resolve(canvas.toDataURL('image/jpeg', quality));
-      };
-      img.onerror = () => reject(new Error('Format gambar tidak valid'));
-      img.src = String(reader.result);
+        const dataUrl = canvas.toDataURL('image/jpeg', targetQ);
+        if (dataUrl.length <= 190000 || targetMaxW === 380) {
+          canvas.toBlob(
+            (blob) => {
+              resolve({
+                blob: blob || file,
+                dataUrl,
+              });
+            },
+            'image/jpeg',
+            targetQ,
+          );
+          return;
+        }
+      }
     };
-    reader.onerror = () => reject(new Error('Gagal membaca file gambar'));
-    reader.readAsDataURL(file);
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error('Format gambar tidak valid'));
+    };
+    img.src = objectUrl;
   });
 }
 
@@ -309,7 +350,7 @@ export async function saveStimulus(stimulus: Stimulus): Promise<void> {
     title: stimulus.title.slice(0, 200),
     stimulusType: stimulus.stimulusType,
     readingText: stimulus.readingText ? stimulus.readingText.slice(0, 15000) : undefined,
-    imageUrl: stimulus.imageUrl ? stimulus.imageUrl.slice(0, 1000) : undefined,
+    imageUrl: stimulus.imageUrl ? stimulus.imageUrl.slice(0, 250000) : undefined,
     tableData: stimulus.tableData,
     chartData: stimulus.chartData,
     diagramSvg: stimulus.diagramSvg ? stimulus.diagramSvg.slice(0, 10000) : undefined,
@@ -346,7 +387,7 @@ export async function saveQuestion(question: Question): Promise<void> {
     questionType: question.questionType,
     stimulusId: question.stimulusId || undefined,
     questionText: question.questionText.slice(0, 4000),
-    imageUrl: question.imageUrl ? question.imageUrl.slice(0, 1000) : undefined,
+    imageUrl: question.imageUrl ? question.imageUrl.slice(0, 250000) : undefined,
     options: question.options,
     statements: question.statements,
     correctOptionId: question.correctOptionId,

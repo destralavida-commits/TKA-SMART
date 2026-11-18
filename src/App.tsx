@@ -159,6 +159,33 @@ function AppShell() {
 
       if (userSnap.exists()) {
         const existing = userSnap.data() as UserProfile;
+
+        // Guarantee bootstrapped owner account always retains active super_admin access
+        if (
+          email === BOOTSTRAPPED_SUPER_ADMIN_EMAIL &&
+          (existing.role !== 'super_admin' ||
+            existing.school_id !== 'ALL' ||
+            !existing.isActive)
+        ) {
+          const restoredAdmin: UserProfile = {
+            ...existing,
+            uid: user.uid,
+            email,
+            name:
+              existing.name && existing.name.trim().length >= 2
+                ? existing.name
+                : user.displayName || 'Admin Utama TKA SMART',
+            role: 'super_admin',
+            school_id: 'ALL',
+            isActive: true,
+          };
+          await saveUserProfile(restoredAdmin);
+          if (authSeqRef.current === seq) {
+            setProfile(restoredAdmin);
+          }
+          return;
+        }
+
         if (!existing.isActive) {
           setAuthError('Akun Anda sedang dinonaktifkan oleh Admin Utama.');
           await signOut(auth);

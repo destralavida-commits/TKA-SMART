@@ -128,9 +128,14 @@ export function AdminLayout({
         </nav>
 
         <div className="p-4 border-t border-white/10 space-y-3 bg-black/15">
-          <div className="text-xs">
+          <div className="text-xs space-y-0.5">
             <div className="font-semibold text-white truncate">{profile.name}</div>
             <div className="text-indigo-200/80 truncate">{profile.email}</div>
+            <div className="text-[11px] text-cyan-200/90 font-medium truncate">
+              {isSuperAdmin
+                ? 'Peran: Admin Utama (Semua Sekolah)'
+                : `Peran: ${profile.role === 'school_admin' ? 'Admin Sekolah' : 'Guru'} · ${profile.school_id}`}
+            </div>
           </div>
           <button
             type="button"
@@ -138,7 +143,7 @@ export function AdminLayout({
             className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/15 text-xs font-semibold text-white transition-colors"
           >
             <LogOut className="w-3.5 h-3.5" />
-            <span>Keluar Akun</span>
+            <span>{isSuperAdmin ? 'Keluar Akun' : 'Keluar / Ganti Akun'}</span>
           </button>
         </div>
       </aside>
