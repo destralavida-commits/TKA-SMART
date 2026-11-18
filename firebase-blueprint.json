@@ -1,0 +1,375 @@
+{
+  "entities": {
+    "School": {
+      "title": "School",
+      "description": "Identitas sekolah dasar peserta simulasi TKA SMART.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "name": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "npsn": { "type": "string", "minLength": 4, "maxLength": 20 },
+        "address": { "type": "string", "maxLength": 300 },
+        "logoUrl": { "type": "string", "maxLength": 1000 },
+        "isActive": { "type": "boolean" },
+        "createdAt": { "type": "string", "maxLength": 40 },
+        "updatedAt": { "type": "string", "maxLength": 40 }
+      },
+      "required": ["id", "name", "npsn", "isActive"]
+    },
+    "UserInvite": {
+      "title": "UserInvite",
+      "description": "Undangan/registrasi akun Admin Sekolah atau Guru oleh Admin Utama.",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "maxLength": 160 },
+        "name": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "role": { "type": "string", "enum": ["super_admin", "school_admin", "teacher"] },
+        "school_id": { "type": "string", "maxLength": 64 },
+        "isActive": { "type": "boolean" },
+        "createdBy": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["email", "name", "role", "school_id", "isActive"]
+    },
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Profil pengguna terautentikasi (Admin Utama, Admin Sekolah, Guru).",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "email": { "type": "string", "maxLength": 160 },
+        "name": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "role": { "type": "string", "enum": ["super_admin", "school_admin", "teacher"] },
+        "school_id": { "type": "string", "maxLength": 64 },
+        "isActive": { "type": "boolean" }
+      },
+      "required": ["uid", "email", "name", "role", "school_id", "isActive"]
+    },
+    "SchoolClass": {
+      "title": "SchoolClass",
+      "description": "Data kelas 6 SD pada masing-masing sekolah.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "school_id": { "type": "string", "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 60 },
+        "gradeLevel": { "type": "string", "maxLength": 10 },
+        "homeroomTeacher": { "type": "string", "maxLength": 120 },
+        "academicYear": { "type": "string", "maxLength": 20 },
+        "isActive": { "type": "boolean" },
+        "isDemo": { "type": "boolean" }
+      },
+      "required": ["id", "school_id", "name", "gradeLevel", "isActive"]
+    },
+    "Student": {
+      "title": "Student",
+      "description": "Data peserta didik kelas 6 yang terikat pada sekolah dan kelas.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "school_id": { "type": "string", "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "classId": { "type": "string", "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "className": { "type": "string", "maxLength": 60 },
+        "nis": { "type": "string", "minLength": 3, "maxLength": 30, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "name": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "gender": { "type": "string", "enum": ["L", "P"] },
+        "isActive": { "type": "boolean" },
+        "isDemo": { "type": "boolean" }
+      },
+      "required": ["id", "school_id", "classId", "nis", "name", "gender", "isActive"]
+    },
+    "StudentDirectory": {
+      "title": "StudentDirectory",
+      "description": "Direktori lookup non-sensitif berdasarkan school_id dan NIS untuk verifikasi masuk ujian siswa.",
+      "type": "object",
+      "properties": {
+        "studentId": { "type": "string", "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "school_id": { "type": "string", "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "classId": { "type": "string", "maxLength": 64 },
+        "className": { "type": "string", "maxLength": 60 },
+        "nis": { "type": "string", "maxLength": 30 },
+        "displayName": { "type": "string", "maxLength": 120 },
+        "isActive": { "type": "boolean" },
+        "isDemo": { "type": "boolean" }
+      },
+      "required": ["studentId", "school_id", "classId", "nis", "displayName", "isActive"]
+    },
+    "Subject": {
+      "title": "Subject",
+      "description": "Mata pelajaran TKA (Bahasa Indonesia & Matematika).",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "enum": ["bahasa_indonesia", "matematika"] },
+        "name": { "type": "string", "maxLength": 80 },
+        "code": { "type": "string", "maxLength": 20 }
+      },
+      "required": ["id", "name", "code"]
+    },
+    "Stimulus": {
+      "title": "Stimulus",
+      "description": "Stimulus bacaan, gambar, tabel, grafik, atau diagram yang dapat digunakan bersama oleh beberapa soal.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "subjectId": { "type": "string", "enum": ["bahasa_indonesia", "matematika"] },
+        "title": { "type": "string", "minLength": 2, "maxLength": 200 },
+        "stimulusType": { "type": "string", "enum": ["text", "image", "table", "chart", "diagram", "mixed"] },
+        "readingText": { "type": "string", "maxLength": 15000 },
+        "imageUrl": { "type": "string", "maxLength": 1000 },
+        "isDemo": { "type": "boolean" },
+        "createdBy": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "subjectId", "title", "stimulusType", "createdBy"]
+    },
+    "Question": {
+      "title": "Question",
+      "description": "Item soal bank soal terpusat beserta kunci jawaban dan pembahasan (khusus admin/guru).",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "subjectId": { "type": "string", "enum": ["bahasa_indonesia", "matematika"] },
+        "topic": { "type": "string", "maxLength": 120 },
+        "competency": { "type": "string", "maxLength": 200 },
+        "indicator": { "type": "string", "maxLength": 250 },
+        "difficulty": { "type": "string", "enum": ["mudah", "sedang", "sukar"] },
+        "questionType": { "type": "string", "enum": ["pg", "pgk_mcma", "pgk_kategori"] },
+        "stimulusId": { "type": "string", "maxLength": 64 },
+        "questionText": { "type": "string", "minLength": 3, "maxLength": 4000 },
+        "imageUrl": { "type": "string", "maxLength": 1000 },
+        "pgkScoringRule": { "type": "string", "enum": ["all_or_nothing", "partial_proportional"] },
+        "points": { "type": "number" },
+        "explanation": { "type": "string", "maxLength": 4000 },
+        "isDemo": { "type": "boolean" },
+        "createdBy": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "subjectId", "topic", "competency", "indicator", "difficulty", "questionType", "questionText", "points", "createdBy"]
+    },
+    "ExamPackage": {
+      "title": "ExamPackage",
+      "description": "Paket simulasi TKA bersama untuk satu atau kedua sekolah.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "title": { "type": "string", "minLength": 3, "maxLength": 180 },
+        "subjectMode": { "type": "string", "enum": ["bahasa_indonesia", "matematika", "gabungan"] },
+        "description": { "type": "string", "maxLength": 1000 },
+        "questionCount": { "type": "number" },
+        "durationMinutes": { "type": "number" },
+        "startTime": { "type": "string", "maxLength": 40 },
+        "endTime": { "type": "string", "maxLength": 40 },
+        "isActive": { "type": "boolean" },
+        "schoolScope": { "type": "string", "enum": ["both", "selected"] },
+        "randomizeQuestions": { "type": "boolean" },
+        "randomizeOptions": { "type": "boolean" },
+        "showResultsToStudent": { "type": "boolean" },
+        "showAnswersAfterExam": { "type": "boolean" },
+        "pgkScoringMode": { "type": "string", "enum": ["all_or_nothing", "partial_proportional"] },
+        "isDemo": { "type": "boolean" },
+        "createdBy": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "title", "subjectMode", "questionCount", "durationMinutes", "isActive", "schoolScope", "createdBy"]
+    },
+    "StudentExamItem": {
+      "title": "StudentExamItem",
+      "description": "Salinan soal aman untuk siswa tanpa kunci jawaban atau pembahasan.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "orderIndex": { "type": "number" },
+        "subjectId": { "type": "string", "enum": ["bahasa_indonesia", "matematika"] },
+        "questionType": { "type": "string", "enum": ["pg", "pgk_mcma", "pgk_kategori"] },
+        "questionText": { "type": "string", "maxLength": 4000 },
+        "imageUrl": { "type": "string", "maxLength": 1000 },
+        "stimulusId": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "orderIndex", "subjectId", "questionType", "questionText"]
+    },
+    "ExamToken": {
+      "title": "ExamToken",
+      "description": "Token akses ujian untuk validasi peserta siswa.",
+      "type": "object",
+      "properties": {
+        "tokenCode": { "type": "string", "minLength": 4, "maxLength": 32, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "packageId": { "type": "string", "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "packageTitle": { "type": "string", "maxLength": 180 },
+        "school_id": { "type": "string", "maxLength": 64 },
+        "sessionName": { "type": "string", "maxLength": 120 },
+        "isActive": { "type": "boolean" },
+        "expiresAt": { "type": "string", "maxLength": 40 },
+        "createdBy": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["tokenCode", "packageId", "school_id", "isActive", "createdBy"]
+    },
+    "ExamSession": {
+      "title": "ExamSession",
+      "description": "Jadwal dan pelaksanaan sesi ujian per sekolah.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "school_id": { "type": "string", "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "packageId": { "type": "string", "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "packageTitle": { "type": "string", "maxLength": 180 },
+        "tokenCode": { "type": "string", "maxLength": 32, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "sessionName": { "type": "string", "maxLength": 120 },
+        "scheduledStart": { "type": "string", "maxLength": 40 },
+        "scheduledEnd": { "type": "string", "maxLength": 40 },
+        "status": { "type": "string", "enum": ["scheduled", "active", "closed"] },
+        "proctorName": { "type": "string", "maxLength": 120 },
+        "isDemo": { "type": "boolean" },
+        "createdBy": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "school_id", "packageId", "tokenCode", "sessionName", "status", "createdBy"]
+    },
+    "ExamAttempt": {
+      "title": "ExamAttempt",
+      "description": "Sesi pengerjaan ujian siswa termasuk status, penanda ragu-ragu, dan jawaban sementara.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "packageId": { "type": "string", "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "tokenCode": { "type": "string", "maxLength": 32, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "school_id": { "type": "string", "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "studentId": { "type": "string", "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "studentName": { "type": "string", "maxLength": 120 },
+        "nis": { "type": "string", "maxLength": 30 },
+        "classId": { "type": "string", "maxLength": 64 },
+        "className": { "type": "string", "maxLength": 60 },
+        "status": { "type": "string", "enum": ["in_progress", "submitted", "graded"] },
+        "currentQuestionIndex": { "type": "number" },
+        "startedAtMs": { "type": "number" },
+        "lastSavedAtMs": { "type": "number" },
+        "submittedAtMs": { "type": "number" },
+        "timeRemainingSeconds": { "type": "number" },
+        "isDemo": { "type": "boolean" }
+      },
+      "required": ["id", "packageId", "tokenCode", "school_id", "studentId", "nis", "status", "startedAtMs"]
+    },
+    "StudentAnswer": {
+      "title": "StudentAnswer",
+      "description": "Log jawaban per butir soal siswa untuk autosave dan pemulihan sesi.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "attemptId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "packageId": { "type": "string", "maxLength": 64 },
+        "school_id": { "type": "string", "maxLength": 64 },
+        "studentId": { "type": "string", "maxLength": 64 },
+        "questionId": { "type": "string", "maxLength": 64 },
+        "isFlagged": { "type": "boolean" },
+        "updatedAtMs": { "type": "number" }
+      },
+      "required": ["id", "attemptId", "packageId", "school_id", "studentId", "questionId", "updatedAtMs"]
+    },
+    "ExamResult": {
+      "title": "ExamResult",
+      "description": "Hasil penilaian otomatis per peserta tanpa membuka kunci jawaban secara ilegal.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "attemptId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "packageId": { "type": "string", "maxLength": 64 },
+        "packageTitle": { "type": "string", "maxLength": 180 },
+        "school_id": { "type": "string", "maxLength": 64 },
+        "studentId": { "type": "string", "maxLength": 64 },
+        "studentName": { "type": "string", "maxLength": 120 },
+        "nis": { "type": "string", "maxLength": 30 },
+        "classId": { "type": "string", "maxLength": 64 },
+        "className": { "type": "string", "maxLength": 60 },
+        "finalScore": { "type": "number" },
+        "maxScore": { "type": "number" },
+        "earnedPoints": { "type": "number" },
+        "correctCount": { "type": "number" },
+        "incorrectCount": { "type": "number" },
+        "blankCount": { "type": "number" },
+        "totalQuestions": { "type": "number" },
+        "percentageCorrect": { "type": "number" },
+        "gradedAtMs": { "type": "number" },
+        "gradedBy": { "type": "string", "maxLength": 128 },
+        "isDemo": { "type": "boolean" }
+      },
+      "required": ["id", "attemptId", "packageId", "school_id", "studentId", "finalScore", "correctCount", "incorrectCount", "blankCount", "totalQuestions", "gradedAtMs", "gradedBy"]
+    },
+    "ExamResultReview": {
+      "title": "ExamResultReview",
+      "description": "Kunci jawaban dan pembahasan hasil ujian yang hanya boleh dibuka setelah admin mengizinkan.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "attemptId": { "type": "string", "maxLength": 128 },
+        "packageId": { "type": "string", "maxLength": 64 },
+        "school_id": { "type": "string", "maxLength": 64 },
+        "gradedBy": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "attemptId", "packageId", "school_id", "gradedBy"]
+    }
+  },
+  "firestore": {
+    "/schools/{schoolId}": {
+      "schema": { "$ref": "#/entities/School" },
+      "description": "Data identitas kedua sekolah SD peserta simulasi."
+    },
+    "/user_invites/{emailId}": {
+      "schema": { "$ref": "#/entities/UserInvite" },
+      "description": "Daftar undangan akun admin sekolah dan guru."
+    },
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Profil pengguna staf (Admin Utama, Admin Sekolah, Guru)."
+    },
+    "/classes/{classId}": {
+      "schema": { "$ref": "#/entities/SchoolClass" },
+      "description": "Daftar kelas per sekolah."
+    },
+    "/students/{studentId}": {
+      "schema": { "$ref": "#/entities/Student" },
+      "description": "Data induk peserta didik terpisah berdasarkan school_id."
+    },
+    "/student_directory/{lookupKey}": {
+      "schema": { "$ref": "#/entities/StudentDirectory" },
+      "description": "Lookup langsung untuk verifikasi NIS siswa saat masuk ujian tanpa membuka list PII."
+    },
+    "/subjects/{subjectId}": {
+      "schema": { "$ref": "#/entities/Subject" },
+      "description": "Master mata pelajaran (Bahasa Indonesia & Matematika)."
+    },
+    "/stimuli/{stimulusId}": {
+      "schema": { "$ref": "#/entities/Stimulus" },
+      "description": "Stimulus bacaan/tabel/grafik/gambar untuk bank soal bersama."
+    },
+    "/question_bank/{questionId}": {
+      "schema": { "$ref": "#/entities/Question" },
+      "description": "Bank soal bersama lengkap dengan kunci jawaban (khusus Admin & Guru)."
+    },
+    "/exam_packages/{packageId}": {
+      "schema": { "$ref": "#/entities/ExamPackage" },
+      "description": "Konfigurasi paket simulasi bersama."
+    },
+    "/exam_packages/{packageId}/student_items/{questionId}": {
+      "schema": { "$ref": "#/entities/StudentExamItem" },
+      "description": "Snapshot soal siswa tanpa kunci jawaban dan pembahasan."
+    },
+    "/exam_tokens/{tokenCode}": {
+      "schema": { "$ref": "#/entities/ExamToken" },
+      "description": "Token validasi ujian."
+    },
+    "/exam_sessions/{sessionId}": {
+      "schema": { "$ref": "#/entities/ExamSession" },
+      "description": "Pelaksanaan sesi ujian masing-masing sekolah."
+    },
+    "/exam_attempts/{attemptId}": {
+      "schema": { "$ref": "#/entities/ExamAttempt" },
+      "description": "Sesi pengerjaan aktif dan tersubmit siswa."
+    },
+    "/student_answers/{answerDocId}": {
+      "schema": { "$ref": "#/entities/StudentAnswer" },
+      "description": "Autosave jawaban per butir soal siswa."
+    },
+    "/exam_results/{attemptId}": {
+      "schema": { "$ref": "#/entities/ExamResult" },
+      "description": "Rekap nilai otomatis dan analisis indikator per peserta."
+    },
+    "/exam_result_reviews/{attemptId}": {
+      "schema": { "$ref": "#/entities/ExamResultReview" },
+      "description": "Pembahasan dan kunci jawaban yang terkunci sampai admin mengizinkan."
+    }
+  }
+}

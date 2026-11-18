@@ -1,0 +1,6 @@
+{
+  "name": "TKA SMART — Simulasi Tes Kompetensi Akademik SD Kelas 6",
+  "description": "Aplikasi simulasi Tes Kompetensi Akademik (TKA) jenjang SD kelas 6 untuk dua sekolah dalam satu sistem terpusat dengan bank soal bersama, penilaian otomatis, dan analisis kompetensi.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

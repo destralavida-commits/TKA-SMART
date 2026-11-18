@@ -1,0 +1,606 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 1. Global Safety Net (Default Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // 2. Primitive & Identity Helpers
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidEmailKey(email) {
+      return email is string && email.size() >= 5 && email.size() <= 160;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function userDocExists() {
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isBootstrappedSuperAdmin() {
+      return isVerifiedUser() && request.auth.token.email.lower() == 'nurwijayanti24@guru.sd.belajar.id';
+    }
+
+    function isSuperAdmin() {
+      return isBootstrappedSuperAdmin() || (
+        isVerifiedUser() &&
+        userDocExists() &&
+        getUserData().role == 'super_admin' &&
+        getUserData().isActive == true
+      );
+    }
+
+    function isAnyStaff() {
+      return isSuperAdmin() || (
+        isVerifiedUser() &&
+        userDocExists() &&
+        getUserData().isActive == true &&
+        (getUserData().role in ['school_admin', 'teacher'])
+      );
+    }
+
+    function isStaffOfSchool(schoolId) {
+      return isSuperAdmin() || (
+        isVerifiedUser() &&
+        userDocExists() &&
+        getUserData().isActive == true &&
+        getUserData().school_id == schoolId &&
+        (getUserData().role in ['school_admin', 'teacher'])
+      );
+    }
+
+    function isValidString(val, minLen, maxLen) {
+      return val is string && val.size() >= minLen && val.size() <= maxLen;
+    }
+
+    function isValidOptionalString(data, field, maxLen) {
+      return !(field in data) || (data[field] is string && data[field].size() <= maxLen);
+    }
+
+    function isValidOptionalBool(data, field) {
+      return !(field in data) || (data[field] is bool);
+    }
+
+    // 3. Entity Validation Blueprints
+    function isValidSchool(data) {
+      return data.keys().hasAll(['id', 'name', 'npsn', 'address', 'logoUrl', 'isActive']) &&
+        data.keys().hasOnly(['id', 'name', 'npsn', 'address', 'logoUrl', 'isActive', 'createdAt', 'updatedAt']) &&
+        isValidId(data.id) &&
+        isValidString(data.name, 2, 120) &&
+        isValidString(data.npsn, 4, 20) &&
+        isValidString(data.address, 0, 300) &&
+        isValidString(data.logoUrl, 0, 1000) &&
+        data.isActive is bool &&
+        isValidOptionalString(data, 'createdAt', 40) &&
+        isValidOptionalString(data, 'updatedAt', 40);
+    }
+
+    function isValidUserInvite(data) {
+      return data.keys().hasAll(['email', 'name', 'role', 'school_id', 'isActive', 'createdBy']) &&
+        data.keys().hasOnly(['email', 'name', 'role', 'school_id', 'isActive', 'createdBy', 'createdAt', 'updatedAt']) &&
+        isValidEmailKey(data.email) &&
+        isValidString(data.name, 2, 120) &&
+        (data.role in ['super_admin', 'school_admin', 'teacher']) &&
+        isValidId(data.school_id) &&
+        data.isActive is bool &&
+        isValidString(data.createdBy, 1, 128) &&
+        isValidOptionalString(data, 'createdAt', 40) &&
+        isValidOptionalString(data, 'updatedAt', 40);
+    }
+
+    function isValidUserProfile(data) {
+      return data.keys().hasAll(['uid', 'email', 'name', 'role', 'school_id', 'isActive']) &&
+        data.keys().hasOnly(['uid', 'email', 'name', 'role', 'school_id', 'isActive', 'createdAt', 'updatedAt']) &&
+        isValidId(data.uid) &&
+        isValidEmailKey(data.email) &&
+        isValidString(data.name, 2, 120) &&
+        (data.role in ['super_admin', 'school_admin', 'teacher']) &&
+        isValidId(data.school_id) &&
+        data.isActive is bool &&
+        isValidOptionalString(data, 'createdAt', 40) &&
+        isValidOptionalString(data, 'updatedAt', 40);
+    }
+
+    function isValidSchoolClass(data) {
+      return data.keys().hasAll(['id', 'school_id', 'name', 'gradeLevel', 'homeroomTeacher', 'academicYear', 'isActive']) &&
+        data.keys().hasOnly(['id', 'school_id', 'name', 'gradeLevel', 'homeroomTeacher', 'academicYear', 'isActive', 'isDemo', 'createdAt', 'updatedAt']) &&
+        isValidId(data.id) &&
+        isValidId(data.school_id) &&
+        isValidString(data.name, 1, 60) &&
+        isValidString(data.gradeLevel, 1, 10) &&
+        isValidString(data.homeroomTeacher, 0, 120) &&
+        isValidString(data.academicYear, 4, 20) &&
+        data.isActive is bool &&
+        isValidOptionalBool(data, 'isDemo') &&
+        isValidOptionalString(data, 'createdAt', 40) &&
+        isValidOptionalString(data, 'updatedAt', 40);
+    }
+
+    function isValidStudent(data) {
+      return data.keys().hasAll(['id', 'school_id', 'classId', 'className', 'nis', 'name', 'gender', 'isActive']) &&
+        data.keys().hasOnly(['id', 'school_id', 'classId', 'className', 'nis', 'name', 'gender', 'isActive', 'isDemo', 'createdAt', 'updatedAt']) &&
+        isValidId(data.id) &&
+        isValidId(data.school_id) &&
+        isValidId(data.classId) &&
+        isValidString(data.className, 1, 60) &&
+        isValidId(data.nis) &&
+        data.nis.size() >= 3 && data.nis.size() <= 30 &&
+        isValidString(data.name, 2, 120) &&
+        (data.gender in ['L', 'P']) &&
+        data.isActive is bool &&
+        isValidOptionalBool(data, 'isDemo') &&
+        isValidOptionalString(data, 'createdAt', 40) &&
+        isValidOptionalString(data, 'updatedAt', 40);
+    }
+
+    function isValidStudentDirectory(data) {
+      return data.keys().hasAll(['studentId', 'school_id', 'classId', 'className', 'nis', 'displayName', 'isActive']) &&
+        data.keys().hasOnly(['studentId', 'school_id', 'classId', 'className', 'nis', 'displayName', 'isActive', 'isDemo']) &&
+        isValidId(data.studentId) &&
+        isValidId(data.school_id) &&
+        isValidId(data.classId) &&
+        isValidString(data.className, 1, 60) &&
+        isValidId(data.nis) &&
+        isValidString(data.displayName, 2, 120) &&
+        data.isActive is bool &&
+        isValidOptionalBool(data, 'isDemo');
+    }
+
+    function isValidSubject(data) {
+      return data.keys().hasAll(['id', 'name', 'code', 'topics']) &&
+        data.keys().hasOnly(['id', 'name', 'code', 'topics']) &&
+        (data.id in ['bahasa_indonesia', 'matematika']) &&
+        isValidString(data.name, 2, 80) &&
+        isValidString(data.code, 2, 20) &&
+        data.topics is list && data.topics.size() <= 30 &&
+        (data.topics.size() == 0 || data.topics[0] is string);
+    }
+
+    function isValidStimulus(data) {
+      return data.keys().hasAll(['id', 'subjectId', 'title', 'stimulusType', 'createdBy']) &&
+        data.keys().hasOnly(['id', 'subjectId', 'title', 'stimulusType', 'readingText', 'imageUrl', 'tableData', 'chartData', 'diagramSvg', 'isDemo', 'createdBy', 'createdAt', 'updatedAt']) &&
+        isValidId(data.id) &&
+        (data.subjectId in ['bahasa_indonesia', 'matematika']) &&
+        isValidString(data.title, 2, 200) &&
+        (data.stimulusType in ['text', 'image', 'table', 'chart', 'diagram', 'mixed']) &&
+        isValidOptionalString(data, 'readingText', 15000) &&
+        isValidOptionalString(data, 'imageUrl', 1000) &&
+        isValidOptionalString(data, 'diagramSvg', 10000) &&
+        isValidOptionalBool(data, 'isDemo') &&
+        isValidString(data.createdBy, 1, 128) &&
+        isValidOptionalString(data, 'createdAt', 40) &&
+        isValidOptionalString(data, 'updatedAt', 40);
+    }
+
+    function isValidQuestion(data) {
+      return data.keys().hasAll(['id', 'subjectId', 'topic', 'competency', 'indicator', 'difficulty', 'questionType', 'questionText', 'pgkScoringRule', 'points', 'explanation', 'createdBy']) &&
+        data.keys().hasOnly(['id', 'subjectId', 'topic', 'competency', 'indicator', 'difficulty', 'questionType', 'stimulusId', 'questionText', 'imageUrl', 'options', 'statements', 'correctOptionId', 'correctOptionIds', 'correctCategories', 'pgkScoringRule', 'points', 'explanation', 'isDemo', 'createdBy', 'createdAt', 'updatedAt']) &&
+        isValidId(data.id) &&
+        (data.subjectId in ['bahasa_indonesia', 'matematika']) &&
+        isValidString(data.topic, 1, 120) &&
+        isValidString(data.competency, 1, 200) &&
+        isValidString(data.indicator, 1, 250) &&
+        (data.difficulty in ['mudah', 'sedang', 'sukar']) &&
+        (data.questionType in ['pg', 'pgk_mcma', 'pgk_kategori']) &&
+        isValidOptionalString(data, 'stimulusId', 64) &&
+        isValidString(data.questionText, 3, 4000) &&
+        isValidOptionalString(data, 'imageUrl', 1000) &&
+        (!( 'options' in data ) || (data.options is list && data.options.size() <= 8)) &&
+        (!( 'statements' in data ) || (data.statements is list && data.statements.size() <= 8)) &&
+        isValidOptionalString(data, 'correctOptionId', 20) &&
+        (!( 'correctOptionIds' in data ) || (data.correctOptionIds is list && data.correctOptionIds.size() <= 8)) &&
+        (data.pgkScoringRule in ['all_or_nothing', 'partial_proportional']) &&
+        data.points is number && data.points >= 1 && data.points <= 100 &&
+        isValidString(data.explanation, 0, 4000) &&
+        isValidOptionalBool(data, 'isDemo') &&
+        isValidString(data.createdBy, 1, 128) &&
+        isValidOptionalString(data, 'createdAt', 40) &&
+        isValidOptionalString(data, 'updatedAt', 40);
+    }
+
+    function isValidExamPackage(data) {
+      return data.keys().hasAll(['id', 'title', 'subjectMode', 'questionIds', 'questionCount', 'durationMinutes', 'isActive', 'schoolScope', 'allowedSchoolIds', 'randomizeQuestions', 'randomizeOptions', 'showResultsToStudent', 'showAnswersAfterExam', 'pgkScoringMode', 'createdBy']) &&
+        data.keys().hasOnly(['id', 'title', 'subjectMode', 'description', 'questionIds', 'questionCount', 'durationMinutes', 'startTime', 'endTime', 'isActive', 'schoolScope', 'allowedSchoolIds', 'randomizeQuestions', 'randomizeOptions', 'showResultsToStudent', 'showAnswersAfterExam', 'pgkScoringMode', 'isDemo', 'createdBy', 'createdAt', 'updatedAt']) &&
+        isValidId(data.id) &&
+        isValidString(data.title, 3, 180) &&
+        (data.subjectMode in ['bahasa_indonesia', 'matematika', 'gabungan']) &&
+        isValidOptionalString(data, 'description', 1000) &&
+        data.questionIds is list && data.questionIds.size() <= 100 &&
+        (data.questionIds.size() == 0 || data.questionIds[0] is string) &&
+        data.questionCount is number && data.questionCount >= 0 && data.questionCount <= 100 &&
+        data.durationMinutes is number && data.durationMinutes >= 5 && data.durationMinutes <= 300 &&
+        isValidOptionalString(data, 'startTime', 40) &&
+        isValidOptionalString(data, 'endTime', 40) &&
+        data.isActive is bool &&
+        (data.schoolScope in ['both', 'selected']) &&
+        data.allowedSchoolIds is list && data.allowedSchoolIds.size() <= 10 &&
+        (data.allowedSchoolIds.size() == 0 || data.allowedSchoolIds[0] is string) &&
+        data.randomizeQuestions is bool &&
+        data.randomizeOptions is bool &&
+        data.showResultsToStudent is bool &&
+        data.showAnswersAfterExam is bool &&
+        (data.pgkScoringMode in ['all_or_nothing', 'partial_proportional']) &&
+        isValidOptionalBool(data, 'isDemo') &&
+        isValidString(data.createdBy, 1, 128) &&
+        isValidOptionalString(data, 'createdAt', 40) &&
+        isValidOptionalString(data, 'updatedAt', 40);
+    }
+
+    function isValidStudentExamItem(data) {
+      return data.keys().hasAll(['id', 'orderIndex', 'subjectId', 'questionType', 'questionText', 'packageActive']) &&
+        data.keys().hasOnly(['id', 'orderIndex', 'subjectId', 'questionType', 'questionText', 'imageUrl', 'options', 'statements', 'stimulusId', 'stimulusSnapshot', 'packageActive']) &&
+        isValidId(data.id) &&
+        data.orderIndex is number && data.orderIndex >= 0 && data.orderIndex <= 200 &&
+        (data.subjectId in ['bahasa_indonesia', 'matematika']) &&
+        (data.questionType in ['pg', 'pgk_mcma', 'pgk_kategori']) &&
+        isValidString(data.questionText, 1, 4000) &&
+        isValidOptionalString(data, 'imageUrl', 1000) &&
+        (!( 'options' in data ) || (data.options is list && data.options.size() <= 8)) &&
+        (!( 'statements' in data ) || (data.statements is list && data.statements.size() <= 8)) &&
+        isValidOptionalString(data, 'stimulusId', 64) &&
+        data.packageActive is bool;
+    }
+
+    function isValidExamToken(data) {
+      return data.keys().hasAll(['tokenCode', 'packageId', 'packageTitle', 'school_id', 'sessionName', 'isActive', 'createdBy']) &&
+        data.keys().hasOnly(['tokenCode', 'packageId', 'packageTitle', 'school_id', 'sessionName', 'isActive', 'expiresAt', 'isDemo', 'createdBy', 'createdAt']) &&
+        isValidId(data.tokenCode) && data.tokenCode.size() >= 4 && data.tokenCode.size() <= 32 &&
+        isValidId(data.packageId) &&
+        isValidString(data.packageTitle, 1, 180) &&
+        isValidId(data.school_id) &&
+        isValidString(data.sessionName, 1, 120) &&
+        data.isActive is bool &&
+        isValidOptionalString(data, 'expiresAt', 40) &&
+        isValidOptionalBool(data, 'isDemo') &&
+        isValidString(data.createdBy, 1, 128) &&
+        isValidOptionalString(data, 'createdAt', 40);
+    }
+
+    function isValidExamSession(data) {
+      return data.keys().hasAll(['id', 'school_id', 'packageId', 'packageTitle', 'tokenCode', 'sessionName', 'status', 'createdBy']) &&
+        data.keys().hasOnly(['id', 'school_id', 'packageId', 'packageTitle', 'tokenCode', 'sessionName', 'scheduledStart', 'scheduledEnd', 'status', 'proctorName', 'isDemo', 'createdBy', 'createdAt', 'updatedAt']) &&
+        isValidId(data.id) &&
+        isValidId(data.school_id) &&
+        isValidId(data.packageId) &&
+        isValidString(data.packageTitle, 1, 180) &&
+        isValidId(data.tokenCode) &&
+        isValidString(data.sessionName, 1, 120) &&
+        isValidOptionalString(data, 'scheduledStart', 40) &&
+        isValidOptionalString(data, 'scheduledEnd', 40) &&
+        (data.status in ['scheduled', 'active', 'closed']) &&
+        isValidOptionalString(data, 'proctorName', 120) &&
+        isValidOptionalBool(data, 'isDemo') &&
+        isValidString(data.createdBy, 1, 128) &&
+        isValidOptionalString(data, 'createdAt', 40) &&
+        isValidOptionalString(data, 'updatedAt', 40);
+    }
+
+    function isValidExamAttempt(data) {
+      return data.keys().hasAll(['id', 'packageId', 'tokenCode', 'school_id', 'studentId', 'studentName', 'nis', 'classId', 'className', 'status', 'questionOrder', 'flaggedQuestionIds', 'currentQuestionIndex', 'answers', 'startedAtMs', 'lastSavedAtMs', 'timeRemainingSeconds']) &&
+        data.keys().hasOnly(['id', 'packageId', 'tokenCode', 'school_id', 'studentId', 'studentName', 'nis', 'classId', 'className', 'status', 'questionOrder', 'flaggedQuestionIds', 'currentQuestionIndex', 'answers', 'startedAtMs', 'lastSavedAtMs', 'submittedAtMs', 'timeRemainingSeconds', 'isDemo']) &&
+        isValidId(data.id) &&
+        isValidId(data.packageId) &&
+        isValidId(data.tokenCode) &&
+        isValidId(data.school_id) &&
+        isValidId(data.studentId) &&
+        isValidString(data.studentName, 2, 120) &&
+        isValidId(data.nis) &&
+        isValidId(data.classId) &&
+        isValidString(data.className, 1, 60) &&
+        (data.status in ['in_progress', 'submitted', 'graded']) &&
+        data.questionOrder is list && data.questionOrder.size() <= 100 &&
+        (data.questionOrder.size() == 0 || data.questionOrder[0] is string) &&
+        data.flaggedQuestionIds is list && data.flaggedQuestionIds.size() <= 100 &&
+        (data.flaggedQuestionIds.size() == 0 || data.flaggedQuestionIds[0] is string) &&
+        data.currentQuestionIndex is number && data.currentQuestionIndex >= 0 && data.currentQuestionIndex <= 100 &&
+        data.answers is map &&
+        data.startedAtMs is number &&
+        data.lastSavedAtMs is number &&
+        (!( 'submittedAtMs' in data ) || data.submittedAtMs is number) &&
+        data.timeRemainingSeconds is number && data.timeRemainingSeconds >= 0 && data.timeRemainingSeconds <= 20000 &&
+        isValidOptionalBool(data, 'isDemo');
+    }
+
+    function isValidStudentAnswer(data) {
+      return data.keys().hasAll(['id', 'attemptId', 'packageId', 'school_id', 'studentId', 'questionId', 'isFlagged', 'updatedAtMs']) &&
+        data.keys().hasOnly(['id', 'attemptId', 'packageId', 'school_id', 'studentId', 'questionId', 'selectedOptionId', 'selectedOptionIds', 'categoryChoices', 'isFlagged', 'updatedAtMs']) &&
+        isValidId(data.id) &&
+        isValidId(data.attemptId) &&
+        isValidId(data.packageId) &&
+        isValidId(data.school_id) &&
+        isValidId(data.studentId) &&
+        isValidId(data.questionId) &&
+        isValidOptionalString(data, 'selectedOptionId', 20) &&
+        (!( 'selectedOptionIds' in data ) || (data.selectedOptionIds is list && data.selectedOptionIds.size() <= 8)) &&
+        (!( 'categoryChoices' in data ) || data.categoryChoices is map) &&
+        data.isFlagged is bool &&
+        data.updatedAtMs is number;
+    }
+
+    function isValidExamResult(data) {
+      return data.keys().hasAll(['id', 'attemptId', 'packageId', 'packageTitle', 'school_id', 'studentId', 'studentName', 'nis', 'classId', 'className', 'finalScore', 'maxScore', 'earnedPoints', 'correctCount', 'incorrectCount', 'blankCount', 'totalQuestions', 'percentageCorrect', 'subjectBreakdown', 'competencyBreakdown', 'itemResults', 'gradedAtMs', 'gradedBy']) &&
+        data.keys().hasOnly(['id', 'attemptId', 'packageId', 'packageTitle', 'school_id', 'studentId', 'studentName', 'nis', 'classId', 'className', 'finalScore', 'maxScore', 'earnedPoints', 'correctCount', 'incorrectCount', 'blankCount', 'totalQuestions', 'percentageCorrect', 'subjectBreakdown', 'competencyBreakdown', 'itemResults', 'gradedAtMs', 'gradedBy', 'isDemo']) &&
+        isValidId(data.id) &&
+        isValidId(data.attemptId) &&
+        isValidId(data.packageId) &&
+        isValidString(data.packageTitle, 1, 180) &&
+        isValidId(data.school_id) &&
+        isValidId(data.studentId) &&
+        isValidString(data.studentName, 2, 120) &&
+        isValidId(data.nis) &&
+        isValidId(data.classId) &&
+        isValidString(data.className, 1, 60) &&
+        data.finalScore is number && data.finalScore >= 0 && data.finalScore <= 100 &&
+        data.maxScore is number &&
+        data.earnedPoints is number &&
+        data.correctCount is number &&
+        data.incorrectCount is number &&
+        data.blankCount is number &&
+        data.totalQuestions is number &&
+        data.percentageCorrect is number &&
+        data.subjectBreakdown is map &&
+        data.competencyBreakdown is list && data.competencyBreakdown.size() <= 50 &&
+        data.itemResults is list && data.itemResults.size() <= 100 &&
+        data.gradedAtMs is number &&
+        isValidString(data.gradedBy, 1, 128) &&
+        isValidOptionalBool(data, 'isDemo');
+    }
+
+    function isValidExamResultReview(data) {
+      return data.keys().hasAll(['id', 'attemptId', 'packageId', 'school_id', 'reviews', 'gradedAtMs', 'gradedBy']) &&
+        data.keys().hasOnly(['id', 'attemptId', 'packageId', 'school_id', 'reviews', 'gradedAtMs', 'gradedBy', 'isDemo']) &&
+        isValidId(data.id) &&
+        isValidId(data.attemptId) &&
+        isValidId(data.packageId) &&
+        isValidId(data.school_id) &&
+        data.reviews is list && data.reviews.size() <= 100 &&
+        data.gradedAtMs is number &&
+        isValidString(data.gradedBy, 1, 128) &&
+        isValidOptionalBool(data, 'isDemo');
+    }
+
+    // 4. Collection Match Blocks
+    match /schools/{schoolId} {
+      allow get: if isValidId(schoolId) && (isAnyStaff() || existing().isActive == true);
+      allow list: if isAnyStaff();
+      allow create: if isValidId(schoolId) && isValidSchool(incoming()) && incoming().id == schoolId && isSuperAdmin();
+      allow update: if isValidId(schoolId) && isValidSchool(incoming()) && incoming().id == existing().id && isSuperAdmin();
+      allow delete: if isValidId(schoolId) && isSuperAdmin();
+    }
+
+    match /user_invites/{emailId} {
+      allow get: if isValidEmailKey(emailId) && (isSuperAdmin() || (isVerifiedUser() && request.auth.token.email.lower() == emailId));
+      allow list: if isSuperAdmin();
+      allow create, update: if isValidEmailKey(emailId) && isValidUserInvite(incoming()) && incoming().email == emailId && isSuperAdmin();
+      allow delete: if isValidEmailKey(emailId) && isSuperAdmin();
+    }
+
+    match /users/{userId} {
+      allow get: if isValidId(userId) && (isSuperAdmin() || (isVerifiedUser() && request.auth.uid == userId));
+      allow list: if isSuperAdmin();
+      allow create: if isValidId(userId) && isValidUserProfile(incoming()) && incoming().uid == userId && (
+        isSuperAdmin() ||
+        (
+          isVerifiedUser() &&
+          request.auth.uid == userId &&
+          incoming().email == request.auth.token.email.lower() &&
+          (
+            (request.auth.token.email.lower() == 'nurwijayanti24@guru.sd.belajar.id' && incoming().role == 'super_admin' && incoming().school_id == 'ALL') ||
+            (
+              exists(/databases/$(database)/documents/user_invites/$(request.auth.token.email.lower())) &&
+              get(/databases/$(database)/documents/user_invites/$(request.auth.token.email.lower())).data.isActive == true &&
+              incoming().role == get(/databases/$(database)/documents/user_invites/$(request.auth.token.email.lower())).data.role &&
+              incoming().school_id == get(/databases/$(database)/documents/user_invites/$(request.auth.token.email.lower())).data.school_id
+            )
+          )
+        )
+      );
+      allow update: if isValidId(userId) && isValidUserProfile(incoming()) && incoming().uid == existing().uid && (
+        isSuperAdmin() ||
+        (
+          isVerifiedUser() &&
+          request.auth.uid == userId &&
+          incoming().role == existing().role &&
+          incoming().school_id == existing().school_id &&
+          incoming().email == existing().email &&
+          incoming().isActive == existing().isActive &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['name', 'updatedAt'])
+        )
+      );
+      allow delete: if isValidId(userId) && isSuperAdmin();
+    }
+
+    match /classes/{classId} {
+      allow get: if isValidId(classId) && isStaffOfSchool(existing().school_id);
+      allow list: if isSuperAdmin() || (isAnyStaff() && resource.data.school_id == getUserData().school_id);
+      allow create: if isValidId(classId) && isValidSchoolClass(incoming()) && incoming().id == classId && isStaffOfSchool(incoming().school_id) && (exists(/databases/$(database)/documents/schools/$(incoming().school_id)) || existsAfter(/databases/$(database)/documents/schools/$(incoming().school_id)));
+      allow update: if isValidId(classId) && isValidSchoolClass(incoming()) && incoming().id == existing().id && incoming().school_id == existing().school_id && isStaffOfSchool(existing().school_id);
+      allow delete: if isValidId(classId) && isStaffOfSchool(existing().school_id);
+    }
+
+    match /students/{studentId} {
+      allow get: if isValidId(studentId) && isStaffOfSchool(existing().school_id);
+      allow list: if isSuperAdmin() || (isAnyStaff() && resource.data.school_id == getUserData().school_id);
+      allow create: if isValidId(studentId) && isValidStudent(incoming()) && incoming().id == studentId && isStaffOfSchool(incoming().school_id) && (exists(/databases/$(database)/documents/schools/$(incoming().school_id)) || existsAfter(/databases/$(database)/documents/schools/$(incoming().school_id))) && (exists(/databases/$(database)/documents/classes/$(incoming().classId)) || existsAfter(/databases/$(database)/documents/classes/$(incoming().classId)));
+      allow update: if isValidId(studentId) && isValidStudent(incoming()) && incoming().id == existing().id && incoming().school_id == existing().school_id && isStaffOfSchool(existing().school_id);
+      allow delete: if isValidId(studentId) && isStaffOfSchool(existing().school_id);
+    }
+
+    match /student_directory/{lookupKey} {
+      allow get: if isValidId(lookupKey) && (isStaffOfSchool(existing().school_id) || existing().isActive == true);
+      allow list: if isSuperAdmin() || (isAnyStaff() && resource.data.school_id == getUserData().school_id);
+      allow create: if isValidId(lookupKey) && isValidStudentDirectory(incoming()) && isStaffOfSchool(incoming().school_id);
+      allow update: if isValidId(lookupKey) && isValidStudentDirectory(incoming()) && incoming().school_id == existing().school_id && isStaffOfSchool(existing().school_id);
+      allow delete: if isValidId(lookupKey) && isStaffOfSchool(existing().school_id);
+    }
+
+    match /subjects/{subjectId} {
+      allow get: if isValidId(subjectId) && isAnyStaff();
+      allow list: if isAnyStaff();
+      allow create, update: if isValidId(subjectId) && isValidSubject(incoming()) && incoming().id == subjectId && isSuperAdmin();
+      allow delete: if isValidId(subjectId) && isSuperAdmin();
+    }
+
+    match /stimuli/{stimulusId} {
+      allow get: if isValidId(stimulusId) && isAnyStaff();
+      allow list: if isAnyStaff();
+      allow create: if isValidId(stimulusId) && isValidStimulus(incoming()) && incoming().id == stimulusId && isSuperAdmin() && incoming().createdBy == request.auth.uid;
+      allow update: if isValidId(stimulusId) && isValidStimulus(incoming()) && incoming().id == existing().id && incoming().createdBy == existing().createdBy && isSuperAdmin();
+      allow delete: if isValidId(stimulusId) && isSuperAdmin();
+    }
+
+    // Answer keys and explanations strictly locked to authenticated staff only
+    match /question_bank/{questionId} {
+      allow get: if isValidId(questionId) && isAnyStaff();
+      allow list: if isAnyStaff();
+      allow create: if isValidId(questionId) && isValidQuestion(incoming()) && incoming().id == questionId && isSuperAdmin() && incoming().createdBy == request.auth.uid;
+      allow update: if isValidId(questionId) && isValidQuestion(incoming()) && incoming().id == existing().id && incoming().createdBy == existing().createdBy && isSuperAdmin();
+      allow delete: if isValidId(questionId) && isSuperAdmin();
+    }
+
+    match /exam_packages/{packageId} {
+      allow get: if isValidId(packageId) && (isAnyStaff() || existing().isActive == true);
+      allow list: if isAnyStaff();
+      allow create: if isValidId(packageId) && isValidExamPackage(incoming()) && incoming().id == packageId && isSuperAdmin() && incoming().createdBy == request.auth.uid;
+      allow update: if isValidId(packageId) && isValidExamPackage(incoming()) && incoming().id == existing().id && incoming().createdBy == existing().createdBy && isSuperAdmin();
+      allow delete: if isValidId(packageId) && isSuperAdmin();
+
+      match /student_items/{questionId} {
+        allow get: if isValidId(packageId) && isValidId(questionId) && (isAnyStaff() || existing().packageActive == true);
+        allow list: if isAnyStaff() || resource.data.packageActive == true;
+        allow create, update: if isValidId(packageId) && isValidId(questionId) && isValidStudentExamItem(incoming()) && incoming().id == questionId && isSuperAdmin() && (exists(/databases/$(database)/documents/exam_packages/$(packageId)) || existsAfter(/databases/$(database)/documents/exam_packages/$(packageId)));
+        allow delete: if isValidId(packageId) && isValidId(questionId) && isSuperAdmin();
+      }
+    }
+
+    match /exam_tokens/{tokenCode} {
+      allow get: if isValidId(tokenCode) && (isAnyStaff() || existing().isActive == true);
+      allow list: if isSuperAdmin() || (isAnyStaff() && (resource.data.school_id == 'ALL' || resource.data.school_id == getUserData().school_id));
+      allow create: if isValidId(tokenCode) && isValidExamToken(incoming()) && incoming().tokenCode == tokenCode && (isSuperAdmin() || (isStaffOfSchool(incoming().school_id) && incoming().school_id != 'ALL')) && incoming().createdBy == request.auth.uid && exists(/databases/$(database)/documents/exam_packages/$(incoming().packageId));
+      allow update: if isValidId(tokenCode) && isValidExamToken(incoming()) && incoming().tokenCode == existing().tokenCode && incoming().createdBy == existing().createdBy && (isSuperAdmin() || (isStaffOfSchool(existing().school_id) && existing().school_id != 'ALL' && incoming().school_id == existing().school_id));
+      allow delete: if isValidId(tokenCode) && (isSuperAdmin() || (isStaffOfSchool(existing().school_id) && existing().school_id != 'ALL'));
+    }
+
+    match /exam_sessions/{sessionId} {
+      allow get: if isValidId(sessionId) && isStaffOfSchool(existing().school_id);
+      allow list: if isSuperAdmin() || (isAnyStaff() && resource.data.school_id == getUserData().school_id);
+      allow create: if isValidId(sessionId) && isValidExamSession(incoming()) && incoming().id == sessionId && isStaffOfSchool(incoming().school_id) && incoming().createdBy == request.auth.uid && exists(/databases/$(database)/documents/schools/$(incoming().school_id)) && exists(/databases/$(database)/documents/exam_packages/$(incoming().packageId));
+      allow update: if isValidId(sessionId) && isValidExamSession(incoming()) && incoming().id == existing().id && incoming().school_id == existing().school_id && incoming().createdBy == existing().createdBy && isStaffOfSchool(existing().school_id);
+      allow delete: if isValidId(sessionId) && isStaffOfSchool(existing().school_id);
+    }
+
+    match /exam_attempts/{attemptId} {
+      allow get: if isValidId(attemptId) && (
+        isStaffOfSchool(existing().school_id) ||
+        (exists(/databases/$(database)/documents/exam_tokens/$(existing().tokenCode)) && get(/databases/$(database)/documents/exam_tokens/$(existing().tokenCode)).data.isActive == true) ||
+        (exists(/databases/$(database)/documents/exam_packages/$(existing().packageId)) && get(/databases/$(database)/documents/exam_packages/$(existing().packageId)).data.showResultsToStudent == true)
+      );
+      allow list: if isSuperAdmin() || (isAnyStaff() && resource.data.school_id == getUserData().school_id);
+      allow create: if isValidId(attemptId) && isValidExamAttempt(incoming()) && incoming().id == attemptId && incoming().status == 'in_progress' && (
+        isStaffOfSchool(incoming().school_id) ||
+        (
+          exists(/databases/$(database)/documents/exam_tokens/$(incoming().tokenCode)) &&
+          get(/databases/$(database)/documents/exam_tokens/$(incoming().tokenCode)).data.isActive == true &&
+          get(/databases/$(database)/documents/exam_tokens/$(incoming().tokenCode)).data.packageId == incoming().packageId &&
+          (get(/databases/$(database)/documents/exam_tokens/$(incoming().tokenCode)).data.school_id == 'ALL' || get(/databases/$(database)/documents/exam_tokens/$(incoming().tokenCode)).data.school_id == incoming().school_id) &&
+          exists(/databases/$(database)/documents/student_directory/$(incoming().school_id + '__' + incoming().nis)) &&
+          get(/databases/$(database)/documents/student_directory/$(incoming().school_id + '__' + incoming().nis)).data.isActive == true
+        )
+      );
+      allow update: if isValidId(attemptId) && isValidExamAttempt(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().packageId == existing().packageId &&
+        incoming().tokenCode == existing().tokenCode &&
+        incoming().school_id == existing().school_id &&
+        incoming().studentId == existing().studentId &&
+        incoming().nis == existing().nis &&
+        incoming().startedAtMs == existing().startedAtMs && (
+          isStaffOfSchool(existing().school_id) ||
+          (
+            existing().status == 'in_progress' &&
+            (incoming().status in ['in_progress', 'submitted']) &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['status', 'answers', 'flaggedQuestionIds', 'currentQuestionIndex', 'lastSavedAtMs', 'submittedAtMs', 'timeRemainingSeconds'])
+          )
+        );
+      allow delete: if isValidId(attemptId) && isStaffOfSchool(existing().school_id);
+    }
+
+    match /student_answers/{answerDocId} {
+      allow get: if isValidId(answerDocId) && (
+        isStaffOfSchool(existing().school_id) ||
+        (exists(/databases/$(database)/documents/exam_attempts/$(existing().attemptId)) && get(/databases/$(database)/documents/exam_attempts/$(existing().attemptId)).data.status == 'in_progress')
+      );
+      allow list: if isSuperAdmin() || (isAnyStaff() && resource.data.school_id == getUserData().school_id);
+      allow create: if isValidId(answerDocId) && isValidStudentAnswer(incoming()) && incoming().id == answerDocId && (
+        isStaffOfSchool(incoming().school_id) ||
+        (
+          exists(/databases/$(database)/documents/exam_attempts/$(incoming().attemptId)) &&
+          get(/databases/$(database)/documents/exam_attempts/$(incoming().attemptId)).data.status == 'in_progress' &&
+          get(/databases/$(database)/documents/exam_attempts/$(incoming().attemptId)).data.school_id == incoming().school_id
+        )
+      );
+      allow update: if isValidId(answerDocId) && isValidStudentAnswer(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().attemptId == existing().attemptId &&
+        incoming().packageId == existing().packageId &&
+        incoming().school_id == existing().school_id &&
+        incoming().studentId == existing().studentId &&
+        incoming().questionId == existing().questionId && (
+          isStaffOfSchool(existing().school_id) ||
+          (
+            get(/databases/$(database)/documents/exam_attempts/$(existing().attemptId)).data.status == 'in_progress' &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['selectedOptionId', 'selectedOptionIds', 'categoryChoices', 'isFlagged', 'updatedAtMs'])
+          )
+        );
+      allow delete: if isValidId(answerDocId) && isStaffOfSchool(existing().school_id);
+    }
+
+    match /exam_results/{attemptId} {
+      allow get: if isValidId(attemptId) && (
+        isStaffOfSchool(existing().school_id) ||
+        (exists(/databases/$(database)/documents/exam_packages/$(existing().packageId)) && get(/databases/$(database)/documents/exam_packages/$(existing().packageId)).data.showResultsToStudent == true)
+      );
+      allow list: if isSuperAdmin() || (isAnyStaff() && resource.data.school_id == getUserData().school_id);
+      allow create, update: if isValidId(attemptId) && isValidExamResult(incoming()) && incoming().id == attemptId && incoming().attemptId == attemptId && isStaffOfSchool(incoming().school_id);
+      allow delete: if isValidId(attemptId) && isStaffOfSchool(existing().school_id);
+    }
+
+    match /exam_result_reviews/{attemptId} {
+      allow get: if isValidId(attemptId) && (
+        isStaffOfSchool(existing().school_id) ||
+        (
+          exists(/databases/$(database)/documents/exam_packages/$(existing().packageId)) &&
+          get(/databases/$(database)/documents/exam_packages/$(existing().packageId)).data.showAnswersAfterExam == true &&
+          exists(/databases/$(database)/documents/exam_attempts/$(attemptId)) &&
+          get(/databases/$(database)/documents/exam_attempts/$(attemptId)).data.status == 'graded'
+        )
+      );
+      allow list: if isSuperAdmin() || (isAnyStaff() && resource.data.school_id == getUserData().school_id);
+      allow create, update: if isValidId(attemptId) && isValidExamResultReview(incoming()) && incoming().id == attemptId && incoming().attemptId == attemptId && isStaffOfSchool(incoming().school_id);
+      allow delete: if isValidId(attemptId) && isStaffOfSchool(existing().school_id);
+    }
+  }
+}
